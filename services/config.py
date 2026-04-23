@@ -36,7 +36,10 @@ def _read_json_object(path: Path, *, name: str) -> dict[str, object]:
 def _load_settings() -> LoadedSettings:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     raw_config = _read_json_object(CONFIG_FILE, name="config.json")
-    auth_key = str(os.getenv("CHATGPT2API_AUTH_KEY") or raw_config.get("auth-key") or "").strip()
+    auth_key = os.getenv("CHATGPT2API_AUTH_KEY")
+    if not auth_key or not auth_key.strip():
+        auth_key = str(raw_config.get("auth-key") or "").strip()
+    
     if not auth_key:
         raise ValueError(
             "❌ auth-key 未设置！\n"
@@ -77,7 +80,10 @@ class ConfigStore:
 
     @property
     def auth_key(self) -> str:
-        return str(os.getenv("CHATGPT2API_AUTH_KEY") or self.data.get("auth-key") or "").strip()
+        val = os.getenv("CHATGPT2API_AUTH_KEY")
+        if val and val.strip():
+            return val.strip()
+        return str(self.data.get("auth-key") or "").strip()
 
     @property
     def accounts_file(self) -> Path:
@@ -102,11 +108,10 @@ class ConfigStore:
 
     @property
     def base_url(self) -> str:
-        return str(
-            os.getenv("CHATGPT2API_BASE_URL")
-            or self.data.get("base_url")
-            or ""
-        ).strip().rstrip("/")
+        val = os.getenv("CHATGPT2API_BASE_URL")
+        if val and val.strip():
+            return val.strip().rstrip("/")
+        return str(self.data.get("base_url") or "").strip().rstrip("/")
 
     def get(self) -> dict[str, object]:
         return dict(self.data)
