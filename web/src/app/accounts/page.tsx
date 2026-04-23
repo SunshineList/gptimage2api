@@ -197,6 +197,32 @@ export default function AccountsPage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
 
+  const copyToClipboard = async (text: string) => {
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const textArea = document.createElement("textarea");
+        textArea.value = text;
+        textArea.style.position = "fixed";
+        textArea.style.left = "-999999px";
+        textArea.style.top = "-999999px";
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        try {
+          document.execCommand('copy');
+        } catch (err) {
+          throw new Error("无法复制文本");
+        }
+        document.body.removeChild(textArea);
+      }
+      toast.success("已复制到剪贴板");
+    } catch (err) {
+      toast.error("复制失败");
+    }
+  };
+
   const loadAccounts = async (silent = false) => {
     if (!silent) {
       setIsLoading(true);
@@ -678,8 +704,7 @@ export default function AccountsPage() {
                               type="button"
                               className="rounded-lg p-1 text-stone-400 transition hover:bg-stone-100 hover:text-stone-700"
                               onClick={() => {
-                                void navigator.clipboard.writeText(account.access_token);
-                                toast.success("token 已复制");
+                                void copyToClipboard(account.access_token);
                               }}
                             >
                               <Copy className="size-4" />

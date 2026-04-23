@@ -7,7 +7,7 @@ import { ImageComposer } from "@/app/image/components/image-composer";
 import { ImageResults, type ImageLightboxItem } from "@/app/image/components/image-results";
 import { ImageSidebar } from "@/app/image/components/image-sidebar";
 import { ImageLightbox } from "@/components/image-lightbox";
-import { editImage, fetchAccounts, generateImage, type Account } from "@/lib/api";
+import { editImage, fetchMe, generateImage, type Account } from "@/lib/api";
 import {
   clearImageConversations,
   deleteImageConversation,
@@ -237,8 +237,13 @@ export default function ImagePage() {
 
   const loadQuota = useCallback(async () => {
     try {
-      const data = await fetchAccounts();
-      setAvailableQuota(formatAvailableQuota(data.items));
+      const data = await fetchMe();
+      if (data.role === "admin") {
+        setAvailableQuota("管理员");
+      } else {
+        const remaining = data.quota === -1 ? "无限制" : (data.quota || 0) - (data.used || 0);
+        setAvailableQuota(String(remaining));
+      }
     } catch {
       setAvailableQuota((prev) => (prev === "加载中..." ? "--" : prev));
     }

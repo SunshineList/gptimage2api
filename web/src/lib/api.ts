@@ -401,6 +401,19 @@ export type Stats = {
   daily: Record<string, { success: number; fail: number }>;
 };
 
+export type UserRole = "admin" | "user" | "guest";
+
+export interface MeResponse {
+  role: UserRole;
+  name?: string;
+  quota?: number;
+  used?: number;
+}
+
+export async function fetchMe() {
+  return httpRequest<MeResponse>("/api/me");
+}
+
 export async function fetchStats() {
   return httpRequest<Stats>("/api/stats");
 }

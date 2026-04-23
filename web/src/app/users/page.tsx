@@ -19,6 +19,33 @@ export default function UsersPage() {
   const [newUserName, setNewUserName] = useState("");
   const [newUserQuota, setNewUserQuota] = useState("-1");
 
+  const copyToClipboard = async (text: string) => {
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        // Fallback for non-secure contexts
+        const textArea = document.createElement("textarea");
+        textArea.value = text;
+        textArea.style.position = "fixed";
+        textArea.style.left = "-999999px";
+        textArea.style.top = "-999999px";
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        try {
+          document.execCommand('copy');
+        } catch (err) {
+          throw new Error("无法复制文本");
+        }
+        document.body.removeChild(textArea);
+      }
+      toast.success("已复制到剪贴板");
+    } catch (err) {
+      toast.error("复制失败，请手动选择复制");
+    }
+  };
+
   const loadUsers = async () => {
     setIsLoading(true);
     try {
@@ -165,10 +192,7 @@ export default function UsersPage() {
                           </code>
                           <button 
                             className="text-stone-400 hover:text-stone-600"
-                            onClick={() => {
-                              void navigator.clipboard.writeText(user.key);
-                              toast.success("Key 已复制到剪贴板");
-                            }}
+                            onClick={() => void copyToClipboard(user.key)}
                           >
                             <Copy className="size-3.5" />
                           </button>
