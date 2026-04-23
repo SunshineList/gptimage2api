@@ -193,43 +193,48 @@ def extract_bearer_token(authorization: str | None) -> str:
     return value.strip()
 
 
-def require_admin(authorization: str | None) -> None:
+def get_auth_info(authorization: str | None) -> dict | None:
+    """内部使用的身份识别逻辑"""
     token = extract_bearer_token(authorization)
-    admin_key = str(config.auth_key or "").strip()
-    # 如果系统未配置 Admin Key，则拒绝所有请求
-    if not admin_key or token != admin_key:
-        raise HTTPException(status_code=401, detail={"error": "管理员授权无效或未配置"})
+    if not token:
+        return None
 
-
-def require_auth(authorization: str | None) -> dict:
-    token = extract_bearer_token(authorization)
     admin_key = str(config.auth_key or "").strip()
     
-    # 检查是否为管理员 (前提是系统已配置 Admin Key)
+    # 1. 检查是否为原始 Admin Key
     if admin_key and token == admin_key:
         return {"role": "admin", "key": token}
-    
+
+    # 2. 检查是否为原始 User Key
     user = user_service.get_user(token)
     if user and user.get("status") == "active":
         return {"role": "user", "key": token, "user": user}
-    
-    # 检查是否为 Session ID
+
+    # 3. 检查是否为 Session ID
     session = user_service.get_session(token)
     if session:
         real_key = session.get("user_key")
-        # 再次检查该 key 是否有效
         if admin_key and real_key == admin_key:
-             return {"role": "admin", "key": real_key}
+            return {"role": "admin", "key": real_key}
         user = user_service.get_user(real_key)
         if user and user.get("status") == "active":
             return {"role": "user", "key": real_key, "user": user}
-    
-    raise HTTPException(status_code=401, detail={"error": "授权无效或 Key 已禁用"})
+
+    return None
 
 
-def require_auth_key(authorization: str | None) -> None:
-    # 保持兼容性，但内部调用 require_auth
-    require_auth(authorization)
+# FastAPI 依赖项
+async def get_active_auth(authorization: str | None = Header(default=None)) -> dict:
+    auth_info = get_auth_info(authorization)
+    if not auth_info:
+        raise HTTPException(status_code=401, detail={"error": "授权无效或 Key 已禁用"})
+    return auth_info
+
+
+async def get_admin_auth(auth: dict = Depends(get_active_auth)) -> dict:
+    if auth["role"] != "admin":
+        raise HTTPException(status_code=403, detail={"error": "需要管理员权限"})
+    return auth
 
 
 def resolve_image_base_url(request: Request) -> str:
@@ -306,7 +311,7 @@ def create_app() -> FastAPI:
     router = APIRouter()
 
     @router.get("/v1/models")
-    async def list_models():
+    async def list_models(auth: dict = Depends(get_active_auth)):
         return {
             "object": "list",
             "data": [
@@ -316,8 +321,7 @@ def create_app() -> FastAPI:
         }
 
     @router.post("/auth/login")
-    async def login(authorization: str | None = Header(default=None)):
-        require_auth(authorization)
+    async def login(auth: dict = Depends(get_active_auth)):
         return {"ok": True}
 
     @router.post("/api/auth/session")
@@ -346,36 +350,31 @@ def create_app() -> FastAPI:
         return {"version": app_version}
 
     @router.get("/api/me")
-    async def get_me(authorization: str | None = Header(default=None)):
-        auth_info = require_auth(authorization)
+    async def get_me(auth: dict = Depends(get_active_auth)):
         return {
-            "role": auth_info["role"],
-            "name": auth_info.get("user", {}).get("name") if auth_info["role"] == "user" else "管理员",
-            "quota": auth_info.get("user", {}).get("quota") if auth_info["role"] == "user" else -1,
-            "used": auth_info.get("user", {}).get("used") if auth_info["role"] == "user" else 0
+            "role": auth["role"],
+            "name": auth.get("user", {}).get("name") if auth["role"] == "user" else "管理员",
+            "quota": auth.get("user", {}).get("quota") if auth["role"] == "user" else -1,
+            "used": auth.get("user", {}).get("used") if auth["role"] == "user" else 0
         }
 
     @router.get("/api/settings")
-    async def get_settings(authorization: str | None = Header(default=None)):
-        require_admin(authorization)
+    async def get_settings(admin: dict = Depends(get_admin_auth)):
         return {"config": config.get()}
 
     @router.post("/api/settings")
     async def save_settings(
             body: SettingsUpdateRequest,
-            authorization: str | None = Header(default=None),
+            admin: dict = Depends(get_admin_auth),
     ):
-        require_admin(authorization)
         return {"config": config.update(body.model_dump(mode="python"))}
 
     @router.get("/api/accounts")
-    async def get_accounts(authorization: str | None = Header(default=None)):
-        require_admin(authorization)
+    async def get_accounts(admin: dict = Depends(get_admin_auth)):
         return {"items": account_service.list_accounts()}
 
     @router.post("/api/accounts")
-    async def create_accounts(body: AccountCreateRequest, authorization: str | None = Header(default=None)):
-        require_admin(authorization)
+    async def create_accounts(body: AccountCreateRequest, admin: dict = Depends(get_admin_auth)):
         tokens = [str(token or "").strip() for token in body.tokens if str(token or "").strip()]
         if not tokens:
             raise HTTPException(status_code=400, detail={"error": "令牌不能为空"})
@@ -389,9 +388,8 @@ def create_app() -> FastAPI:
         }
 
     @router.post("/api/accounts/upload")
-    async def upload_accounts(body: AccountCreateRequest, authorization: str | None = Header(default=None)):
+    async def upload_accounts(body: AccountCreateRequest, admin: dict = Depends(get_admin_auth)):
         """专门给注册机使用的轻量级上传接口"""
-        require_admin(authorization)
         tokens = [str(token or "").strip() for token in body.tokens if str(token or "").strip()]
         if not tokens:
             raise HTTPException(status_code=400, detail={"error": "令牌不能为空"})
@@ -410,16 +408,14 @@ def create_app() -> FastAPI:
         }
 
     @router.delete("/api/accounts")
-    async def delete_accounts(body: AccountDeleteRequest, authorization: str | None = Header(default=None)):
-        require_admin(authorization)
+    async def delete_accounts(body: AccountDeleteRequest, admin: dict = Depends(get_admin_auth)):
         tokens = [str(token or "").strip() for token in body.tokens if str(token or "").strip()]
         if not tokens:
             raise HTTPException(status_code=400, detail={"error": "令牌不能为空"})
         return account_service.delete_accounts(tokens)
 
     @router.post("/api/accounts/refresh")
-    async def refresh_accounts(body: AccountRefreshRequest, authorization: str | None = Header(default=None)):
-        require_admin(authorization)
+    async def refresh_accounts(body: AccountRefreshRequest, admin: dict = Depends(get_admin_auth)):
         access_tokens = [str(token or "").strip() for token in body.access_tokens if str(token or "").strip()]
         if not access_tokens:
             access_tokens = account_service.list_tokens()
@@ -428,8 +424,7 @@ def create_app() -> FastAPI:
         return account_service.refresh_accounts(access_tokens)
 
     @router.post("/api/accounts/update")
-    async def update_account(body: AccountUpdateRequest, authorization: str | None = Header(default=None)):
-        require_admin(authorization)
+    async def update_account(body: AccountUpdateRequest, admin: dict = Depends(get_admin_auth)):
         access_token = str(body.access_token or "").strip()
         if not access_token:
             raise HTTPException(status_code=400, detail={"error": "访问令牌不能为空"})
@@ -455,11 +450,10 @@ def create_app() -> FastAPI:
     async def generate_images(
             body: ImageGenerationRequest,
             request: Request,
-            authorization: str | None = Header(default=None)
+            auth: dict = Depends(get_active_auth)
     ):
-        auth_info = require_auth(authorization)
-        if auth_info["role"] == "user":
-            if not user_service.use_quota(auth_info["key"]):
+        if auth["role"] == "user":
+            if not user_service.use_quota(auth["key"]):
                 raise HTTPException(status_code=403, detail={"error": "额度已耗尽"})
 
         base_url = resolve_image_base_url(request)
@@ -470,12 +464,12 @@ def create_app() -> FastAPI:
             stats_service.record_success()
             
             # 自动保存到历史 (如果用户已登录)
-            if auth_info["role"] == "user":
+            if auth["role"] == "user":
                 image_data = result.get("data", [])
                 for item in image_data:
                     if isinstance(item, dict) and item.get("b64_json"):
                         image_history_service.save_image(
-                            auth_info["key"], 
+                            auth["key"], 
                             body.prompt, 
                             f"data:image/png;base64,{item.get('b64_json')}", 
                             body.model
@@ -489,17 +483,16 @@ def create_app() -> FastAPI:
     @router.post("/v1/images/edits")
     async def edit_images(
             request: Request,
-            authorization: str | None = Header(default=None),
             image: list[UploadFile] | None = File(default=None),
             image_list: list[UploadFile] | None = File(default=None, alias="image[]"),
             prompt: str = Form(...),
             model: str = Form(default="gpt-image-1"),
             n: int = Form(default=1),
             response_format: str = Form(default="b64_json"),
+            auth: dict = Depends(get_active_auth),
     ):
-        auth_info = require_auth(authorization)
-        if auth_info["role"] == "user":
-            if not user_service.use_quota(auth_info["key"]):
+        if auth["role"] == "user":
+            if not user_service.use_quota(auth["key"]):
                 raise HTTPException(status_code=403, detail={"error": "额度已耗尽"})
 
         base_url = resolve_image_base_url(request)
@@ -529,10 +522,9 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=502, detail={"error": str(exc)}) from exc
 
     @router.post("/v1/chat/completions")
-    async def create_chat_completion(body: ChatCompletionRequest, authorization: str | None = Header(default=None)):
-        auth_info = require_auth(authorization)
-        if auth_info["role"] == "user":
-            if not user_service.use_quota(auth_info["key"]):
+    async def create_chat_completion(body: ChatCompletionRequest, auth: dict = Depends(get_active_auth)):
+        if auth["role"] == "user":
+            if not user_service.use_quota(auth["key"]):
                 raise HTTPException(status_code=403, detail={"error": "额度已耗尽"})
         
         try:
@@ -548,60 +540,51 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=502, detail={"error": str(exc)}) from exc
 
     @router.post("/api/users")
-    async def create_user(body: UserCreateRequest, authorization: str | None = Header(default=None)):
-        require_admin(authorization)
+    async def create_user(body: UserCreateRequest, admin: dict = Depends(get_admin_auth)):
         return user_service.create_user(body.name, body.quota)
 
     @router.get("/api/users")
-    async def list_users(authorization: str | None = Header(default=None)):
-        require_admin(authorization)
+    async def list_users(admin: dict = Depends(get_admin_auth)):
         return {"items": user_service.list_users()}
 
     @router.delete("/api/users/{key}")
-    async def delete_user(key: str, authorization: str | None = Header(default=None)):
-        require_admin(authorization)
+    async def delete_user(key: str, admin: dict = Depends(get_admin_auth)):
         if user_service.delete_user(key):
             return {"ok": True}
         raise HTTPException(status_code=404, detail={"error": "用户不存在"})
 
     @router.post("/api/users/{key}")
-    async def update_user(key: str, body: UserUpdateRequest, authorization: str | None = Header(default=None)):
-        require_admin(authorization)
+    async def update_user(key: str, body: UserUpdateRequest, admin: dict = Depends(get_admin_auth)):
         user = user_service.update_user(key, body.model_dump(exclude_none=True))
         if user:
             return {"item": user}
         raise HTTPException(status_code=404, detail={"error": "用户不存在"})
 
     @router.get("/api/stats")
-    async def get_stats(authorization: str | None = Header(default=None)):
-        require_admin(authorization)
+    async def get_stats(admin: dict = Depends(get_admin_auth)):
         return stats_service.get_stats()
 
     # ── 图片历史和广场接口 ──────────────────────────────────────────
 
     @router.get("/api/images/history")
-    async def get_image_history(authorization: str | None = Header(default=None)):
-        auth_info = require_auth(authorization)
-        return {"items": image_history_service.list_images(auth_info["key"])}
+    async def get_image_history(auth: dict = Depends(get_active_auth)):
+        return {"items": image_history_service.list_images(auth["key"])}
 
     @router.delete("/api/images/history/{image_id}")
-    async def delete_image_history(image_id: str, authorization: str | None = Header(default=None)):
-        auth_info = require_auth(authorization)
-        if image_history_service.delete_image(image_id, auth_info["key"]):
+    async def delete_image_history(image_id: str, auth: dict = Depends(get_active_auth)):
+        if image_history_service.delete_image(image_id, auth["key"]):
             return {"ok": True}
         raise HTTPException(status_code=404, detail={"error": "图片不存在"})
 
     @router.post("/api/plaza/publish/{image_id}")
-    async def publish_to_plaza(image_id: str, authorization: str | None = Header(default=None)):
-        auth_info = require_auth(authorization)
-        if plaza_service.publish_to_plaza(image_id, auth_info["key"]):
+    async def publish_to_plaza(image_id: str, auth: dict = Depends(get_active_auth)):
+        if plaza_service.publish_to_plaza(image_id, auth["key"]):
             return {"ok": True}
         raise HTTPException(status_code=400, detail={"error": "发布失败"})
 
     @router.delete("/api/plaza/publish/{image_id}")
-    async def unpublish_from_plaza(image_id: str, authorization: str | None = Header(default=None)):
-        auth_info = require_auth(authorization)
-        if plaza_service.unpublish_from_plaza(image_id, auth_info["key"]):
+    async def unpublish_from_plaza(image_id: str, auth: dict = Depends(get_active_auth)):
+        if plaza_service.unpublish_from_plaza(image_id, auth["key"]):
             return {"ok": True}
         raise HTTPException(status_code=400, detail={"error": "取消发布失败"})
 
@@ -611,44 +594,38 @@ def create_app() -> FastAPI:
 
     # 对话管理端点
     @router.get("/api/images/conversations")
-    async def get_conversations(authorization: str | None = Header(default=None)):
-        auth_info = require_auth(authorization)
-        return {"items": conversation_service.list_conversations(auth_info["key"])}
+    async def get_conversations(auth: dict = Depends(get_active_auth)):
+        return {"items": conversation_service.list_conversations(auth["key"])}
 
     @router.post("/api/images/conversations")
-    async def save_conversation(data: Dict[str, Any], authorization: str | None = Header(default=None)):
-        auth_info = require_auth(authorization)
+    async def save_conversation(data: Dict[str, Any], auth: dict = Depends(get_active_auth)):
         conv_id = data.get("id")
         if not conv_id:
             raise HTTPException(status_code=400, detail="Missing conversation ID")
-        conversation_service.save_conversation(auth_info["key"], conv_id, data)
+        conversation_service.save_conversation(auth["key"], conv_id, data)
         return {"ok": True}
 
     @router.delete("/api/images/conversations/{conv_id}")
-    async def delete_conversation(conv_id: str, authorization: str | None = Header(default=None)):
-        auth_info = require_auth(authorization)
-        conversation_service.delete_conversation(auth_info["key"], conv_id)
+    async def delete_conversation(conv_id: str, auth: dict = Depends(get_active_auth)):
+        conversation_service.delete_conversation(auth["key"], conv_id)
         return {"ok": True}
 
     @router.delete("/api/images/conversations")
-    async def clear_conversations(authorization: str | None = Header(default=None)):
-        auth_info = require_auth(authorization)
-        conversation_service.clear_conversations(auth_info["key"])
+    async def clear_conversations(auth: dict = Depends(get_active_auth)):
+        conversation_service.clear_conversations(auth["key"])
         return {"ok": True}
 
     # ── CPA multi-pool endpoints ────────────────────────────────────
 
     @router.get("/api/cpa/pools")
-    async def list_cpa_pools(authorization: str | None = Header(default=None)):
-        require_admin(authorization)
+    async def list_cpa_pools(admin: dict = Depends(get_admin_auth)):
         return {"pools": sanitize_cpa_pools(cpa_config.list_pools())}
 
     @router.post("/api/cpa/pools")
     async def create_cpa_pool(
             body: CPAPoolCreateRequest,
-            authorization: str | None = Header(default=None),
+            admin: dict = Depends(get_admin_auth),
     ):
-        require_admin(authorization)
         if not body.base_url.strip():
             raise HTTPException(status_code=400, detail={"error": "base_url is required"})
         if not body.secret_key.strip():
@@ -664,9 +641,8 @@ def create_app() -> FastAPI:
     async def update_cpa_pool(
             pool_id: str,
             body: CPAPoolUpdateRequest,
-            authorization: str | None = Header(default=None),
+            admin: dict = Depends(get_admin_auth),
     ):
-        require_admin(authorization)
         pool = cpa_config.update_pool(pool_id, body.model_dump(exclude_none=True))
         if pool is None:
             raise HTTPException(status_code=404, detail={"error": "pool not found"})
@@ -675,9 +651,8 @@ def create_app() -> FastAPI:
     @router.delete("/api/cpa/pools/{pool_id}")
     async def delete_cpa_pool(
             pool_id: str,
-            authorization: str | None = Header(default=None),
+            admin: dict = Depends(get_admin_auth),
     ):
-        require_admin(authorization)
         if not cpa_config.delete_pool(pool_id):
             raise HTTPException(status_code=404, detail={"error": "号池不存在"})
         return {"pools": sanitize_cpa_pools(cpa_config.list_pools())}
@@ -685,9 +660,8 @@ def create_app() -> FastAPI:
     @router.get("/api/cpa/pools/{pool_id}/files")
     async def cpa_pool_files(
             pool_id: str,
-            authorization: str | None = Header(default=None),
+            admin: dict = Depends(get_admin_auth),
     ):
-        require_admin(authorization)
         pool = cpa_config.get_pool(pool_id)
         if pool is None:
             raise HTTPException(status_code=404, detail={"error": "pool not found"})
@@ -698,9 +672,8 @@ def create_app() -> FastAPI:
     async def cpa_pool_import(
             pool_id: str,
             body: CPAImportRequest,
-            authorization: str | None = Header(default=None),
+            admin: dict = Depends(get_admin_auth),
     ):
-        require_admin(authorization)
         pool = cpa_config.get_pool(pool_id)
         if pool is None:
             raise HTTPException(status_code=404, detail={"error": "pool not found"})
@@ -711,8 +684,7 @@ def create_app() -> FastAPI:
         return {"import_job": job}
 
     @router.get("/api/cpa/pools/{pool_id}/import")
-    async def cpa_pool_import_progress(pool_id: str, authorization: str | None = Header(default=None)):
-        require_admin(authorization)
+    async def cpa_pool_import_progress(pool_id: str, admin: dict = Depends(get_admin_auth)):
         pool = cpa_config.get_pool(pool_id)
         if pool is None:
             raise HTTPException(status_code=404, detail={"error": "pool not found"})
@@ -721,16 +693,14 @@ def create_app() -> FastAPI:
     # ── Sub2API endpoints ─────────────────────────────────────────────
 
     @router.get("/api/sub2api/servers")
-    async def list_sub2api_servers(authorization: str | None = Header(default=None)):
-        require_admin(authorization)
+    async def list_sub2api_servers(admin: dict = Depends(get_admin_auth)):
         return {"servers": sanitize_sub2api_servers(sub2api_config.list_servers())}
 
     @router.post("/api/sub2api/servers")
     async def create_sub2api_server(
             body: Sub2APIServerCreateRequest,
-            authorization: str | None = Header(default=None),
+            admin: dict = Depends(get_admin_auth),
     ):
-        require_admin(authorization)
         if not body.base_url.strip():
             raise HTTPException(status_code=400, detail={"error": "base_url is required"})
         has_login = body.email.strip() and body.password.strip()
@@ -757,9 +727,8 @@ def create_app() -> FastAPI:
     async def update_sub2api_server(
             server_id: str,
             body: Sub2APIServerUpdateRequest,
-            authorization: str | None = Header(default=None),
+            admin: dict = Depends(get_admin_auth),
     ):
-        require_admin(authorization)
         server = sub2api_config.update_server(server_id, body.model_dump(exclude_none=True))
         if server is None:
             raise HTTPException(status_code=404, detail={"error": "server not found"})
@@ -771,9 +740,8 @@ def create_app() -> FastAPI:
     @router.delete("/api/sub2api/servers/{server_id}")
     async def delete_sub2api_server(
             server_id: str,
-            authorization: str | None = Header(default=None),
+            admin: dict = Depends(get_admin_auth),
     ):
-        require_admin(authorization)
         if not sub2api_config.delete_server(server_id):
             raise HTTPException(status_code=404, detail={"error": "服务器不存在"})
         return {"servers": sanitize_sub2api_servers(sub2api_config.list_servers())}
@@ -781,9 +749,8 @@ def create_app() -> FastAPI:
     @router.get("/api/sub2api/servers/{server_id}/groups")
     async def sub2api_server_groups(
             server_id: str,
-            authorization: str | None = Header(default=None),
+            admin: dict = Depends(get_admin_auth),
     ):
-        require_admin(authorization)
         server = sub2api_config.get_server(server_id)
         if server is None:
             raise HTTPException(status_code=404, detail={"error": "server not found"})
@@ -796,9 +763,8 @@ def create_app() -> FastAPI:
     @router.get("/api/sub2api/servers/{server_id}/accounts")
     async def sub2api_server_accounts(
             server_id: str,
-            authorization: str | None = Header(default=None),
+            admin: dict = Depends(get_admin_auth),
     ):
-        require_admin(authorization)
         server = sub2api_config.get_server(server_id)
         if server is None:
             raise HTTPException(status_code=404, detail={"error": "server not found"})
@@ -812,9 +778,8 @@ def create_app() -> FastAPI:
     async def sub2api_server_import(
             server_id: str,
             body: Sub2APIImportRequest,
-            authorization: str | None = Header(default=None),
+            admin: dict = Depends(get_admin_auth),
     ):
-        require_admin(authorization)
         server = sub2api_config.get_server(server_id)
         if server is None:
             raise HTTPException(status_code=404, detail={"error": "server not found"})
@@ -827,9 +792,8 @@ def create_app() -> FastAPI:
     @router.get("/api/sub2api/servers/{server_id}/import")
     async def sub2api_server_import_progress(
             server_id: str,
-            authorization: str | None = Header(default=None),
+            admin: dict = Depends(get_admin_auth),
     ):
-        require_admin(authorization)
         server = sub2api_config.get_server(server_id)
         if server is None:
             raise HTTPException(status_code=404, detail={"error": "server not found"})
@@ -837,12 +801,28 @@ def create_app() -> FastAPI:
 
     # ── Upstream proxy endpoints ─────────────────────────────────────
 
+    @router.get("/api/proxy")
+    async def get_proxy(admin: dict = Depends(get_admin_auth)):
+        return {
+            "proxy": {
+                "enabled": bool(config.get_proxy_settings()),
+                "url": config.get_proxy_settings()
+            }
+        }
+
+    @router.post("/api/proxy")
+    async def update_proxy(body: ProxyUpdateRequest, admin: dict = Depends(get_admin_auth)):
+        current_config = config.get()
+        if body.url is not None:
+            current_config["proxy"] = body.url
+        config.update(current_config)
+        return await get_proxy(admin)
+
     @router.post("/api/proxy/test")
     async def test_proxy_endpoint(
             body: ProxyTestRequest,
-            authorization: str | None = Header(default=None),
+            admin: dict = Depends(get_admin_auth),
     ):
-        require_admin(authorization)
         candidate = (body.url or "").strip()
         if not candidate:
             candidate = config.get_proxy_settings()
