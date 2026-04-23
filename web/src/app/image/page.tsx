@@ -8,14 +8,19 @@ import { ImageComposer } from "@/app/image/components/image-composer";
 import { ImageResults, type ImageLightboxItem } from "@/app/image/components/image-results";
 import { ImageSidebar } from "@/app/image/components/image-sidebar";
 import { ImageLightbox } from "@/components/image-lightbox";
-import { editImage, fetchMe, generateImage, MeResponse } from "@/lib/api";
+import {
+  editImage,
+  fetchMe,
+  generateImage,
+  MeResponse,
+  fetchConversations,
+  saveConversation as apiSaveConversation,
+  deleteConversation as apiDeleteConversation,
+  clearConversations as apiClearConversations,
+} from "@/lib/api";
 import { getStoredAuthKey } from "@/store/auth";
 import {
-  clearImageConversations,
-  deleteImageConversation,
   getImageConversationStats,
-  listImageConversations,
-  saveImageConversations,
   type ImageConversation,
   type ImageConversationMode,
   type ImageTurn,
@@ -110,7 +115,7 @@ async function recoverConversationHistory(items: ImageConversation[]) {
 
       const loadingCount = turn.images.filter((image) => image.status === "loading").length;
       if (loadingCount > 0) {
-        const message = "页面刷新或任务中断，未完成的图片已标记为失败";
+        const message = "任务中断，未完成的图片已标记为失败";
         changed = true;
         return {
           ...turn,
@@ -153,7 +158,9 @@ async function recoverConversationHistory(items: ImageConversation[]) {
 
   const changedConversations = normalized.filter((conversation, index) => conversation !== items[index]);
   if (changedConversations.length > 0) {
-    await saveImageConversations(normalized);
+    for (const conv of changedConversations) {
+      await apiSaveConversation(conv);
+    }
   }
 
   return normalized;
@@ -211,7 +218,7 @@ export default function ImagePage() {
 
     const loadHistory = async () => {
       try {
-        const items = await listImageConversations();
+        const { items } = await fetchConversations();
         const normalizedItems = await recoverConversationHistory(items);
         if (cancelled) {
           return;
@@ -309,7 +316,7 @@ export default function ImagePage() {
     ]);
     conversationsRef.current = nextConversations;
     setConversations(nextConversations);
-    await saveImageConversations(nextConversations);
+    await apiSaveConversation(conversation);
   };
 
   const updateConversation = useCallback(
@@ -327,7 +334,7 @@ export default function ImagePage() {
       conversationsRef.current = nextConversations;
       setConversations(nextConversations);
       if (options.persist !== false) {
-        await saveImageConversations(nextConversations);
+        await apiSaveConversation(nextConversation);
       }
     },
     [],
@@ -364,11 +371,11 @@ export default function ImagePage() {
     }
 
     try {
-      await deleteImageConversation(id);
+      await apiDeleteConversation(id);
     } catch (error) {
       const message = error instanceof Error ? error.message : "删除会话失败";
       toast.error(message);
-      const items = await listImageConversations();
+      const { items } = await fetchConversations();
       conversationsRef.current = items;
       setConversations(items);
     }
@@ -376,7 +383,7 @@ export default function ImagePage() {
 
   const handleClearHistory = async () => {
     try {
-      await clearImageConversations();
+      await apiClearConversations();
       conversationsRef.current = [];
       setConversations([]);
       setSelectedConversationId(null);

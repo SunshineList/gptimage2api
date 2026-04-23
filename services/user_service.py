@@ -4,6 +4,7 @@ import string
 from pathlib import Path
 from threading import Lock
 from datetime import datetime
+from services.database import db
 
 class UserService:
     def __init__(self, store_file: Path):
@@ -12,20 +13,25 @@ class UserService:
         self._users = self._load_users()
 
     def _load_users(self) -> list[dict]:
-        if not self.store_file.exists():
-            return []
-        try:
-            data = json.loads(self.store_file.read_text(encoding="utf-8"))
-            return data if isinstance(data, list) else []
-        except Exception:
-            return []
+        data = db.load_all_data("users")
+        if data:
+            return data
+        
+        if self.store_file.exists():
+            try:
+                old_data = json.loads(self.store_file.read_text(encoding="utf-8"))
+                if isinstance(old_data, list):
+                    print(f"检测到旧的 {self.store_file}，正在迁移 {len(old_data)} 个用户到 SQLite...")
+                    for user in old_data:
+                        db.save_data("users", "key", user["key"], user)
+                    return old_data
+            except Exception as e:
+                print(f"从 JSON 迁移用户失败: {e}")
+        return []
 
     def _save_users(self) -> None:
-        self.store_file.parent.mkdir(parents=True, exist_ok=True)
-        self.store_file.write_text(
-            json.dumps(self._users, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
+        for user in self._users:
+            db.save_data("users", "key", user["key"], user)
 
     def generate_key(self, length: int = 32) -> str:
         alphabet = string.ascii_letters + string.digits
@@ -55,9 +61,25 @@ class UserService:
             initial_count = len(self._users)
             self._users = [u for u in self._users if u.get("key") != key]
             if len(self._users) < initial_count:
-                self._save_users()
+                db.delete_data("users", "key", key)
                 return True
             return False
+
+    def create_session(self, user_key: str) -> str:
+        session_id = secrets.token_hex(32)
+        session_data = {
+            "id": session_id,
+            "user_key": user_key,
+            "created_at": datetime.now().isoformat()
+        }
+        db.save_data("sessions", "id", session_id, session_data)
+        return session_id
+
+    def get_session(self, session_id: str) -> Optional[dict]:
+        return db.load_one_data("sessions", "id", session_id)
+
+    def delete_session(self, session_id: str):
+        db.delete_data("sessions", "id", session_id)
 
     def get_user(self, key: str) -> dict | None:
         with self._lock:

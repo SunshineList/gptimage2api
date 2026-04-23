@@ -26,6 +26,10 @@ from services.image_service import ImageGenerationError
 from services.version import get_app_version
 from services.user_service import user_service
 from services.stats_service import stats_service
+from services.image_history_service import image_history_service
+from services.plaza_service import plaza_service
+from services.conversation_service import conversation_service
+import secrets
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 WEB_DIST_DIR = BASE_DIR / "web_dist"
@@ -140,6 +144,9 @@ class UserUpdateRequest(BaseModel):
     quota: int | None = None
     status: str | None = None
 
+class SessionCreateRequest(BaseModel):
+    key: str
+
 
 def build_model_item(model_id: str) -> dict[str, object]:
     return {
@@ -202,13 +209,20 @@ def require_auth(authorization: str | None) -> dict:
     if admin_key and token == admin_key:
         return {"role": "admin", "key": token}
     
-    # 检查是否为普通用户
-    if not token:
-        raise HTTPException(status_code=401, detail={"error": "授权无效"})
-        
     user = user_service.get_user(token)
     if user and user.get("status") == "active":
         return {"role": "user", "key": token, "user": user}
+    
+    # 检查是否为 Session ID
+    session = user_service.get_session(token)
+    if session:
+        real_key = session.get("user_key")
+        # 再次检查该 key 是否有效
+        if admin_key and real_key == admin_key:
+             return {"role": "admin", "key": real_key}
+        user = user_service.get_user(real_key)
+        if user and user.get("status") == "active":
+            return {"role": "user", "key": real_key, "user": user}
     
     raise HTTPException(status_code=401, detail={"error": "授权无效或 Key 已禁用"})
 
@@ -305,6 +319,27 @@ def create_app() -> FastAPI:
     async def login(authorization: str | None = Header(default=None)):
         require_auth(authorization)
         return {"ok": True}
+
+    @router.post("/api/auth/session")
+    async def create_session(body: SessionCreateRequest):
+        user = user_service.get_user(body.key)
+        if not user or user.get("status") != "active":
+            # 检查是否为管理员
+            admin_key = str(config.auth_key or "").strip()
+            if admin_key and body.key == admin_key:
+                session_id = user_service.create_session(body.key)
+                return {"session_id": session_id, "role": "admin"}
+            raise HTTPException(status_code=401, detail={"error": "无效的 Key"})
+        
+        session_id = user_service.create_session(body.key)
+        return {"session_id": session_id, "role": "user"}
+
+    @router.get("/api/auth/session/{session_id}")
+    async def get_session(session_id: str):
+        session = user_service.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=401, detail={"error": "会话已过期"})
+        return session
 
     @router.get("/version")
     async def get_version():
@@ -433,6 +468,19 @@ def create_app() -> FastAPI:
                 chatgpt_service.generate_with_pool, body.prompt, body.model, body.n, body.response_format, base_url
             )
             stats_service.record_success()
+            
+            # 自动保存到历史 (如果用户已登录)
+            if auth_info["role"] == "user":
+                image_data = result.get("data", [])
+                for item in image_data:
+                    if isinstance(item, dict) and item.get("b64_json"):
+                        image_history_service.save_image(
+                            auth_info["key"], 
+                            body.prompt, 
+                            f"data:image/png;base64,{item.get('b64_json')}", 
+                            body.model
+                        )
+            
             return result
         except ImageGenerationError as exc:
             stats_service.record_fail()
@@ -455,6 +503,10 @@ def create_app() -> FastAPI:
                 raise HTTPException(status_code=403, detail={"error": "额度已耗尽"})
 
         base_url = resolve_image_base_url(request)
+
+        uploads = (image or []) + (image_list or [])
+        if not uploads:
+            raise HTTPException(status_code=400, detail={"error": "缺少图片文件"})
 
         images: list[tuple[bytes, str, str]] = []
         for upload in uploads:
@@ -524,6 +576,65 @@ def create_app() -> FastAPI:
     async def get_stats(authorization: str | None = Header(default=None)):
         require_admin(authorization)
         return stats_service.get_stats()
+
+    # ── 图片历史和广场接口 ──────────────────────────────────────────
+
+    @router.get("/api/images/history")
+    async def get_image_history(authorization: str | None = Header(default=None)):
+        auth_info = require_auth(authorization)
+        return {"items": image_history_service.list_images(auth_info["key"])}
+
+    @router.delete("/api/images/history/{image_id}")
+    async def delete_image_history(image_id: str, authorization: str | None = Header(default=None)):
+        auth_info = require_auth(authorization)
+        if image_history_service.delete_image(image_id, auth_info["key"]):
+            return {"ok": True}
+        raise HTTPException(status_code=404, detail={"error": "图片不存在"})
+
+    @router.post("/api/plaza/publish/{image_id}")
+    async def publish_to_plaza(image_id: str, authorization: str | None = Header(default=None)):
+        auth_info = require_auth(authorization)
+        if plaza_service.publish_to_plaza(image_id, auth_info["key"]):
+            return {"ok": True}
+        raise HTTPException(status_code=400, detail={"error": "发布失败"})
+
+    @router.delete("/api/plaza/publish/{image_id}")
+    async def unpublish_from_plaza(image_id: str, authorization: str | None = Header(default=None)):
+        auth_info = require_auth(authorization)
+        if plaza_service.unpublish_from_plaza(image_id, auth_info["key"]):
+            return {"ok": True}
+        raise HTTPException(status_code=400, detail={"error": "取消发布失败"})
+
+    @router.get("/api/plaza")
+    async def list_plaza():
+        return {"items": plaza_service.list_plaza()}
+
+    # 对话管理端点
+    @router.get("/api/images/conversations")
+    async def get_conversations(authorization: str | None = Header(default=None)):
+        auth_info = require_auth(authorization)
+        return {"items": conversation_service.list_conversations(auth_info["key"])}
+
+    @router.post("/api/images/conversations")
+    async def save_conversation(data: Dict[str, Any], authorization: str | None = Header(default=None)):
+        auth_info = require_auth(authorization)
+        conv_id = data.get("id")
+        if not conv_id:
+            raise HTTPException(status_code=400, detail="Missing conversation ID")
+        conversation_service.save_conversation(auth_info["key"], conv_id, data)
+        return {"ok": True}
+
+    @router.delete("/api/images/conversations/{conv_id}")
+    async def delete_conversation(conv_id: str, authorization: str | None = Header(default=None)):
+        auth_info = require_auth(authorization)
+        conversation_service.delete_conversation(auth_info["key"], conv_id)
+        return {"ok": True}
+
+    @router.delete("/api/images/conversations")
+    async def clear_conversations(authorization: str | None = Header(default=None)):
+        auth_info = require_auth(authorization)
+        conversation_service.clear_conversations(auth_info["key"])
+        return {"ok": True}
 
     # ── CPA multi-pool endpoints ────────────────────────────────────
 

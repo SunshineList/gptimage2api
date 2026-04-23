@@ -4,7 +4,9 @@ services:
     container_name: gptimage2api
     restart: unless-stopped
     ports:
-      - "3000:80"
+      - "3780:80"
     volumes:
       - ./data:/app/data
       - ./config.json:/app/config.json:ro
+    environment:
+      - CHATGPT2API_AUTH_KEY=${CHATGPT2API_AUTH_KEY:-}

@@ -8,8 +8,8 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { fetchMe, login } from "@/lib/api";
-import { setStoredAuthKey } from "@/store/auth";
+import { fetchMe, createSession } from "@/lib/api";
+import { setStoredAuthKey, setStoredSessionId } from "@/store/auth";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -25,7 +25,8 @@ export default function LoginPage() {
 
     setIsSubmitting(true);
     try {
-      await login(normalizedAuthKey);
+      const sessionRes = await createSession(normalizedAuthKey);
+      await setStoredSessionId(sessionRes.session_id);
       await setStoredAuthKey(normalizedAuthKey);
       const me = await fetchMe();
       if (me.role === "admin") {

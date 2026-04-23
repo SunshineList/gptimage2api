@@ -10,10 +10,10 @@ web_dist
 .venv
 .idea
 data
-config.json
 edit
 test
 
 docker-compose-local.yml
 
 .claude/settings.local.json
+config.json

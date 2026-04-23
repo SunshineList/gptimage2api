@@ -1,7 +1,7 @@
 import axios, {AxiosError, type AxiosRequestConfig} from "axios";
 
 import webConfig from "@/constants/common-env";
-import {clearStoredAuthKey, getStoredAuthKey} from "@/store/auth";
+import {clearStoredAuthKey, getStoredAuthKey, getStoredSessionId} from "@/store/auth";
 
 type RequestConfig = AxiosRequestConfig & {
     redirectOnUnauthorized?: boolean;
@@ -13,10 +13,14 @@ const request = axios.create({
 
 request.interceptors.request.use(async (config) => {
     const nextConfig = {...config};
+    const sessionId = await getStoredSessionId();
     const authKey = await getStoredAuthKey();
     const headers = {...(nextConfig.headers || {})} as Record<string, string>;
-    if (authKey && !headers.Authorization) {
-        headers.Authorization = `Bearer ${authKey}`;
+    
+    // 优先使用 session_id，因为它存在数据库中
+    const token = sessionId || authKey;
+    if (token && !headers.Authorization) {
+        headers.Authorization = `Bearer ${token}`;
     }
     // eslint-disable-next-line @typescript-eslint/ban-ts-comment
     // @ts-expect-error

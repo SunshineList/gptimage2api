@@ -32,11 +32,13 @@ export function TopNav() {
   // 根据角色过滤菜单
   const navItems = [
     { href: "/image", label: "画图", roles: ["admin", "user"] },
+    { href: "/gallery", label: "画廊", roles: ["admin", "user"] },
+    { href: "/plaza", label: "广场", roles: ["admin", "user", "guest"] },
     { href: "/accounts", label: "号池管理", roles: ["admin"] },
     { href: "/users", label: "用户管理", roles: ["admin"] },
     { href: "/stats", label: "统计面板", roles: ["admin"] },
     { href: "/settings", label: "设置", roles: ["admin"] },
-  ].filter((item) => item.roles.includes(me?.role || "user"));
+  ].filter((item) => item.roles.includes(me?.role || "guest"));
 
   return (
     <header>

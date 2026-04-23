@@ -14,6 +14,7 @@ from curl_cffi.requests import Session
 from services.config import config
 from services.proxy_service import proxy_settings
 from services.utils import anonymize_token
+from services.database import db
 
 
 class AccountService:
@@ -157,22 +158,55 @@ class AccountService:
         return quota, restore_at, True
 
     def _load_accounts(self) -> list[dict]:
-        if not self.store_file.exists():
-            return []
-        try:
-            data = json.loads(self.store_file.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            return []
-        if not isinstance(data, list):
-            return []
-        return [normalized for item in data if (normalized := self._normalize_account(item)) is not None]
+        # 首先尝试从数据库加载
+        data = db.load_all_data("accounts")
+        if data:
+            return [normalized for item in data if (normalized := self._normalize_account(item)) is not None]
+
+        # 如果数据库为空，尝试从旧的 JSON 文件迁移
+        if self.store_file.exists():
+            try:
+                old_data = json.loads(self.store_file.read_text(encoding="utf-8"))
+                if isinstance(old_data, list):
+                    accounts = [normalized for item in old_data if (normalized := self._normalize_account(item)) is not None]
+                    if accounts:
+                        print(f"检测到旧的 {self.store_file}，正在迁移 {len(accounts)} 个账户到 SQLite...")
+                        for acc in accounts:
+                            db.save_data("accounts", "access_token", acc["access_token"], acc)
+                        return accounts
+            except Exception as e:
+                print(f"从 JSON 迁移账户失败: {e}")
+        return []
 
     def _save_accounts(self) -> None:
-        self.store_file.parent.mkdir(parents=True, exist_ok=True)
-        self.store_file.write_text(
-            json.dumps(self._accounts, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
+        # 为了不动核心逻辑，我们继续使用 self._accounts 并将其同步到数据库
+        # 注意：在大规模数据下，这里应该改为只增量更新数据库，但目前为了保持逻辑一致，我们全量更新或逐个更新
+        # 这里我们采用逐个 save_data 的方式
+        for account in self._accounts:
+            access_token = self._clean_token(account.get("access_token"))
+            if access_token:
+                db.save_data("accounts", "access_token", access_token, account)
+
+    def delete_accounts(self, tokens: list[str]) -> dict:
+        target_set = set(self._clean_tokens(tokens))
+        if not target_set:
+            return {"removed": 0, "items": self.list_accounts()}
+        with self._lock:
+            before = len(self._accounts)
+            self._accounts = [item for item in self._accounts if
+                              self._clean_token(item.get("access_token")) not in target_set]
+            removed = before - len(self._accounts)
+            if self._accounts:
+                self._index %= len(self._accounts)
+            else:
+                self._index = 0
+            if removed:
+                # 显式从数据库删除
+                for token in target_set:
+                    db.delete_data("accounts", "access_token", token)
+                # self._save_accounts() # 不再需要全量保存
+            items = self._public_items(self._accounts)
+        return {"removed": removed, "items": items}
 
     def _build_remote_headers(self, access_token: str) -> tuple[dict[str, str], str]:
         account = self.get_account(access_token) or {}
@@ -339,23 +373,6 @@ class AccountService:
             items = self._public_items(self._accounts)
         return {"added": added, "skipped": skipped, "items": items}
 
-    def delete_accounts(self, tokens: list[str]) -> dict:
-        target_set = set(self._clean_tokens(tokens))
-        if not target_set:
-            return {"removed": 0, "items": self.list_accounts()}
-        with self._lock:
-            before = len(self._accounts)
-            self._accounts = [item for item in self._accounts if
-                              self._clean_token(item.get("access_token")) not in target_set]
-            removed = before - len(self._accounts)
-            if self._accounts:
-                self._index %= len(self._accounts)
-            else:
-                self._index = 0
-            if removed:
-                self._save_accounts()
-            items = self._public_items(self._accounts)
-        return {"removed": removed, "items": items}
 
     def remove_token(self, access_token: str) -> bool:
         return bool(self.delete_accounts([access_token])["removed"])

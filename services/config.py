@@ -84,6 +84,10 @@ class ConfigStore:
         return DATA_DIR / "accounts.json"
 
     @property
+    def db_path(self) -> Path:
+        return DATA_DIR / "database.db"
+
+    @property
     def refresh_account_interval_minute(self) -> int:
         try:
             return int(self.data.get("refresh_account_interval_minute", 5))

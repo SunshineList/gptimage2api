@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 from threading import Lock
 from datetime import datetime
+from services.database import db
 
 class StatsService:
     def __init__(self, store_file: Path):
@@ -10,20 +11,23 @@ class StatsService:
         self._stats = self._load_stats()
 
     def _load_stats(self) -> dict:
-        if not self.store_file.exists():
-            return {"total_success": 0, "total_fail": 0, "daily": {}}
-        try:
-            data = json.loads(self.store_file.read_text(encoding="utf-8"))
-            return data if isinstance(data, dict) else {"total_success": 0, "total_fail": 0, "daily": {}}
-        except Exception:
-            return {"total_success": 0, "total_fail": 0, "daily": {}}
+        data = db.load_all_data("stats")
+        if data:
+            return data[0] if data else {"total_success": 0, "total_fail": 0, "daily": {}}
+        
+        if self.store_file.exists():
+            try:
+                old_data = json.loads(self.store_file.read_text(encoding="utf-8"))
+                if isinstance(old_data, dict):
+                    print(f"检测到旧的 {self.store_file}，正在迁移统计数据到 SQLite...")
+                    db.save_data("stats", "id", "global", old_data)
+                    return old_data
+            except Exception as e:
+                print(f"从 JSON 迁移统计失败: {e}")
+        return {"total_success": 0, "total_fail": 0, "daily": {}}
 
     def _save_stats(self) -> None:
-        self.store_file.parent.mkdir(parents=True, exist_ok=True)
-        self.store_file.write_text(
-            json.dumps(self._stats, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
+        db.save_data("stats", "id", "global", self._stats)
 
     def record_success(self, model: str = "unknown"):
         with self._lock:

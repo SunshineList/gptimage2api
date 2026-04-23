@@ -3,6 +3,7 @@
 import localforage from "localforage";
 
 export const AUTH_KEY_STORAGE_KEY = "chatgpt2api_auth_key";
+export const SESSION_ID_STORAGE_KEY = "chatgpt2api_session_id";
 
 const authStorage = localforage.createInstance({
   name: "chatgpt2api",
@@ -31,4 +32,22 @@ export async function clearStoredAuthKey() {
     return;
   }
   await authStorage.removeItem(AUTH_KEY_STORAGE_KEY);
+  await authStorage.removeItem(SESSION_ID_STORAGE_KEY);
+}
+
+export async function getStoredSessionId() {
+  if (typeof window === "undefined") {
+    return "";
+  }
+  const value = await authStorage.getItem<string>(SESSION_ID_STORAGE_KEY);
+  return String(value || "").trim();
+}
+
+export async function setStoredSessionId(sessionId: string) {
+  const normalized = String(sessionId || "").trim();
+  if (!normalized) {
+    await authStorage.removeItem(SESSION_ID_STORAGE_KEY);
+    return;
+  }
+  await authStorage.setItem(SESSION_ID_STORAGE_KEY, normalized);
 }

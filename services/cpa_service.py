@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import Lock
+from services.database import db
 
 from curl_cffi.requests import Session
 
@@ -73,22 +74,33 @@ class CPAConfig:
         self._pools: list[dict] = self._load()
 
     def _load(self) -> list[dict]:
-        if not self._store_file.exists():
-            return []
-        try:
-            raw = json.loads(self._store_file.read_text(encoding="utf-8"))
-            if isinstance(raw, dict) and "base_url" in raw:
-                pool = _normalize_pool(raw)
-                return [pool] if pool["base_url"] else []
-            if isinstance(raw, list):
-                return [_normalize_pool(item) for item in raw if isinstance(item, dict)]
-        except Exception:
-            pass
+        data = db.load_all_data("cpa_pools")
+        if data:
+            return [_normalize_pool(item) for item in data if isinstance(item, dict)]
+
+        if self._store_file.exists():
+            try:
+                raw = json.loads(self._store_file.read_text(encoding="utf-8"))
+                pools = []
+                if isinstance(raw, dict) and "base_url" in raw:
+                    pool = _normalize_pool(raw)
+                    if pool["base_url"]:
+                        pools = [pool]
+                elif isinstance(raw, list):
+                    pools = [_normalize_pool(item) for item in raw if isinstance(item, dict)]
+                
+                if pools:
+                    print(f"检测到旧的 {self._store_file}，正在迁移 {len(pools)} 个 CPA 号池到 SQLite...")
+                    for pool in pools:
+                        db.save_data("cpa_pools", "id", pool["id"], pool)
+                    return pools
+            except Exception as e:
+                print(f"从 JSON 迁移 CPA 配置失败: {e}")
         return []
 
     def _save(self) -> None:
-        self._store_file.parent.mkdir(parents=True, exist_ok=True)
-        self._store_file.write_text(json.dumps(self._pools, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        for pool in self._pools:
+            db.save_data("cpa_pools", "id", pool["id"], pool)
 
     def list_pools(self) -> list[dict]:
         with self._lock:
@@ -124,7 +136,7 @@ class CPAConfig:
             before = len(self._pools)
             self._pools = [pool for pool in self._pools if pool["id"] != pool_id]
             if len(self._pools) < before:
-                self._save()
+                db.delete_data("cpa_pools", "id", pool_id)
                 return True
         return False
 

@@ -12,3 +12,12 @@ web/node_modules
 
 assets
 README.md
+
+# Local data and config
+data/
+config.json
+.agent/
+design-system/
+.python-version
+uv.lock
+pyproject.toml

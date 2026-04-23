@@ -417,3 +417,89 @@ export async function fetchMe() {
 export async function fetchStats() {
   return httpRequest<Stats>("/api/stats");
 }
+
+// ── New Features: Sessions, Gallery, Plaza ──────────────────────────
+
+export type Session = {
+  id: string;
+  user_key: string;
+  created_at: string;
+  role: "admin" | "user";
+};
+
+export type ImageHistory = {
+  id: string;
+  user_key: string;
+  prompt: string;
+  image_url: string;
+  model: string;
+  created_at: string;
+  is_public: boolean;
+};
+
+export type PlazaPost = {
+  id: string;
+  image_id: string;
+  prompt: string;
+  image_url: string;
+  model: string;
+  user_nickname: string;
+  created_at: string;
+};
+
+export async function createSession(key: string) {
+  return httpRequest<{ session_id: string; role: "admin" | "user" }>("/api/auth/session", {
+    method: "POST",
+    body: { key },
+  });
+}
+
+export async function getSession(sessionId: string) {
+  return httpRequest<Session>(`/api/auth/session/${sessionId}`);
+}
+
+export async function fetchImageHistory() {
+  return httpRequest<{ items: ImageHistory[] }>("/api/images/history");
+}
+
+export async function deleteImageHistory(imageId: string) {
+  return httpRequest<{ ok: boolean }>(`/api/images/history/${imageId}`, {
+    method: "DELETE",
+  });
+}
+
+export async function publishToPlaza(imageId: string) {
+  const response = await request.post(`/api/plaza`, { image_id: imageId });
+  return response.data;
+}
+
+export async function unpublishFromPlaza(imageId: string) {
+  const response = await request.delete(`/api/plaza/${imageId}`);
+  return response.data;
+}
+
+export async function fetchPlaza() {
+  const response = await request.get<{ items: any[] }>(`/api/plaza`);
+  return response.data;
+}
+
+// Conversation Management
+export async function fetchConversations() {
+  const response = await request.get<{ items: any[] }>(`/api/images/conversations`);
+  return response.data;
+}
+
+export async function saveConversation(data: any) {
+  const response = await request.post(`/api/images/conversations`, data);
+  return response.data;
+}
+
+export async function deleteConversation(id: string) {
+  const response = await request.delete(`/api/images/conversations/${id}`);
+  return response.data;
+}
+
+export async function clearConversations() {
+  const response = await request.delete(`/api/images/conversations`);
+  return response.data;
+}

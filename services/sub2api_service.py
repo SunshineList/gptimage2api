@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import Lock
+from services.database import db
 
 from curl_cffi.requests import Session
 
@@ -77,22 +78,27 @@ class Sub2APIConfig:
         self._servers: list[dict] = self._load()
 
     def _load(self) -> list[dict]:
-        if not self._store_file.exists():
-            return []
-        try:
-            raw = json.loads(self._store_file.read_text(encoding="utf-8"))
-            if isinstance(raw, list):
-                return [_normalize_server(item) for item in raw if isinstance(item, dict)]
-        except Exception:
-            pass
+        data = db.load_all_data("sub2api_servers")
+        if data:
+            return [_normalize_server(item) for item in data if isinstance(item, dict)]
+
+        if self._store_file.exists():
+            try:
+                raw = json.loads(self._store_file.read_text(encoding="utf-8"))
+                if isinstance(raw, list):
+                    servers = [_normalize_server(item) for item in raw if isinstance(item, dict)]
+                    if servers:
+                        print(f"检测到旧的 {self._store_file}，正在迁移 {len(servers)} 个 Sub2API 服务器到 SQLite...")
+                        for server in servers:
+                            db.save_data("sub2api_servers", "id", server["id"], server)
+                        return servers
+            except Exception as e:
+                print(f"从 JSON 迁移 Sub2API 配置失败: {e}")
         return []
 
     def _save(self) -> None:
-        self._store_file.parent.mkdir(parents=True, exist_ok=True)
-        self._store_file.write_text(
-            json.dumps(self._servers, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
+        for server in self._servers:
+            db.save_data("sub2api_servers", "id", server["id"], server)
 
     def list_servers(self) -> list[dict]:
         with self._lock:
@@ -151,7 +157,7 @@ class Sub2APIConfig:
             self._servers = [server for server in self._servers if server["id"] != server_id]
             removed = len(self._servers) < before
             if removed:
-                self._save()
+                db.delete_data("sub2api_servers", "id", server_id)
         if removed:
             _token_cache.pop(server_id, None)
         return removed
