@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { login } from "@/lib/api";
+import { fetchMe, login } from "@/lib/api";
 import { setStoredAuthKey } from "@/store/auth";
 
 export default function LoginPage() {
@@ -27,7 +27,12 @@ export default function LoginPage() {
     try {
       await login(normalizedAuthKey);
       await setStoredAuthKey(normalizedAuthKey);
-      router.replace("/accounts");
+      const me = await fetchMe();
+      if (me.role === "admin") {
+        router.replace("/accounts");
+      } else {
+        router.replace("/image");
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "登录失败";
       toast.error(message);
