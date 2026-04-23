@@ -1,5 +1,5 @@
 {
-  "auth_key": "admin123456",
+  "auth-key": "admin123456",
   "base_url": "",
   "refresh_account_interval_minute": 10,
   "proxy": ""
