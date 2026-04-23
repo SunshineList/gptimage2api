@@ -7,7 +7,7 @@ type RequestConfig = AxiosRequestConfig & {
     redirectOnUnauthorized?: boolean;
 };
 
-const request = axios.create({
+export const request = axios.create({
     baseURL: webConfig.apiUrl.replace(/\/$/, ""),
 });
 
