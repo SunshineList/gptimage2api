@@ -34,7 +34,6 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 
 COPY main.py ./
-COPY config.json ./
 COPY VERSION ./
 COPY services ./services
 COPY nginx.conf /etc/nginx/nginx.conf

@@ -19,5 +19,3 @@ config.json
 .agent/
 design-system/
 .python-version
-uv.lock
-pyproject.toml
