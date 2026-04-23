@@ -23,6 +23,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     UV_LINK_MODE=copy
 
+# Install Nginx
+RUN apt-get update && apt-get install -y nginx && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 RUN pip install --no-cache-dir uv
@@ -34,8 +37,12 @@ COPY main.py ./
 COPY config.json ./
 COPY VERSION ./
 COPY services ./services
-COPY --from=web-build /app/web/out ./web_dist
+COPY nginx.conf /etc/nginx/nginx.conf
+COPY entrypoint.sh ./
+RUN chmod +x entrypoint.sh
+
+COPY --from=web-build /app/web/out /usr/share/nginx/html
 
 EXPOSE 80
 
-CMD ["uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "80", "--access-log"]
+CMD ["./entrypoint.sh"]

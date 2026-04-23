@@ -356,3 +356,51 @@ export async function testProxy(url?: string) {
     body: { url: url ?? "" },
   });
 }
+
+// ── User Management ──────────────────────────────────────────────
+
+export type User = {
+  key: string;
+  name: string;
+  quota: number;
+  used: number;
+  created_at: string;
+  last_used_at?: string;
+  status: "active" | "disabled";
+};
+
+export async function fetchUsers() {
+  return httpRequest<{ items: User[] }>("/api/users");
+}
+
+export async function createUser(name: string, quota: number) {
+  return httpRequest<User>("/api/users", {
+    method: "POST",
+    body: { name, quota },
+  });
+}
+
+export async function deleteUser(key: string) {
+  return httpRequest<{ ok: boolean }>(`/api/users/${key}`, {
+    method: "DELETE",
+  });
+}
+
+export async function updateUser(key: string, updates: Partial<User>) {
+  return httpRequest<{ item: User }>(`/api/users/${key}`, {
+    method: "POST",
+    body: updates,
+  });
+}
+
+// ── Statistics ───────────────────────────────────────────────────
+
+export type Stats = {
+  total_success: number;
+  total_fail: number;
+  daily: Record<string, { success: number; fail: number }>;
+};
+
+export async function fetchStats() {
+  return httpRequest<Stats>("/api/stats");
+}

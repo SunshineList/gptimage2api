@@ -1,7 +1,7 @@
 services:
   app:
-    image: ghcr.io/basketikun/chatgpt2api:latest
-    container_name: chatgpt2api
+    image: ghcr.io/sunshinelist/gptimage2api:latest
+    container_name: gptimage2api
     restart: unless-stopped
     ports:
       - "3000:80"

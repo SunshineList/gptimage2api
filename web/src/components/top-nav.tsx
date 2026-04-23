@@ -11,6 +11,8 @@ import { cn } from "@/lib/utils";
 const navItems = [
   { href: "/image", label: "画图" },
   { href: "/accounts", label: "号池管理" },
+  { href: "/users", label: "用户管理" },
+  { href: "/stats", label: "统计面板" },
   { href: "/settings", label: "设置" },
 ];
 
@@ -35,18 +37,8 @@ export function TopNav() {
             href="/image"
             className="py-2 text-[15px] font-semibold tracking-tight text-stone-950 transition hover:text-stone-700"
           >
-            chatgpt2api
+            gptimage2api
           </Link>
-          <a
-            href="https://github.com/basketikun/chatgpt2api"
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-1.5 py-2 text-sm text-stone-400 transition hover:text-stone-700"
-            aria-label="GitHub repository"
-          >
-            <Github className="size-4" />
-            <span>GitHub</span>
-          </a>
         </div>
         <div className="flex justify-center gap-8">
           {navItems.map((item) => {

@@ -245,7 +245,7 @@ class AccountService:
         with self._lock:
             tokens = self._list_available_candidate_tokens(excluded_tokens)
             if not tokens:
-                raise RuntimeError(f"No available tokens found in {self.store_file}")
+                raise RuntimeError(f"在 {self.store_file} 中未找到可用令牌")
             access_token = tokens[self._index % len(tokens)]
             self._index += 1
             return access_token
@@ -256,7 +256,7 @@ class AccountService:
             remote_info = self.fetch_remote_info(access_token)
         except Exception as exc:
             message = str(exc)
-            print(f"[account-available] refresh token={token_ref} fail {message}")
+            print(f"[账户可用性] 刷新令牌={token_ref} 失败: {message}")
             if "/backend-api/me failed: HTTP 401" in message:
                 return self.update_account(
                     access_token,
@@ -278,9 +278,9 @@ class AccountService:
             if self._is_image_account_available(account or {}):
                 return access_token
             print(
-                f"[account-available] skip token={token_ref} "
-                f"quota={account.get('quota') if account else 'unknown'} "
-                f"status={account.get('status') if account else 'unknown'}"
+                f"[账户可用性] 跳过令牌={token_ref} "
+                f"额度={account.get('quota') if account else '未知'} "
+                f"状态={account.get('status') if account else '未知'}"
             )
 
     def next_token(self) -> str:
@@ -409,11 +409,11 @@ class AccountService:
     def fetch_remote_info(self, access_token: str) -> dict[str, Any]:
         access_token = self._clean_token(access_token)
         if not access_token:
-            raise ValueError("access_token is required")
+            raise ValueError("需要 access_token")
 
         headers, impersonate = self._build_remote_headers(access_token)
         token_ref = anonymize_token(access_token)
-        print(f"[account-refresh] start {token_ref}")
+        print(f"[账户刷新] 开始 {token_ref}")
         session = Session(**proxy_settings.build_session_kwargs(impersonate=impersonate, verify=True))
         session.headers.update(headers)
         try:
@@ -443,11 +443,11 @@ class AccountService:
                 init_response = init_future.result()
 
             if me_response.status_code != 200:
-                raise RuntimeError(f"/backend-api/me failed: HTTP {me_response.status_code}")
+                raise RuntimeError(f"/backend-api/me 失败: HTTP {me_response.status_code}")
             me_payload = me_response.json()
 
             if init_response.status_code != 200:
-                raise RuntimeError(f"/backend-api/conversation/init failed: HTTP {init_response.status_code}")
+                raise RuntimeError(f"/backend-api/conversation/init 失败: HTTP {init_response.status_code}")
             init_payload = init_response.json()
 
             limits_progress = init_payload.get("limits_progress")
@@ -470,10 +470,10 @@ class AccountService:
                 "status": status,
             }
             print(
-                "[account-refresh] ok",
+                "[账户刷新] 成功",
                 token_ref,
-                f"quota={result.get('quota')}",
-                f"restore_at={result.get('restore_at')}",
+                f"额度={result.get('quota')}",
+                f"重置时间={result.get('restore_at')}",
             )
             return result
         finally:
@@ -499,7 +499,7 @@ class AccountService:
                         refreshed += 1
                 except Exception as exc:
                     message = str(exc)
-                    print(f"[account-refresh] fail {anonymize_token(access_token)} {message}")
+                    print(f"[账户刷新] 失败 {anonymize_token(access_token)} {message}")
                     if "/backend-api/me failed: HTTP 401" in message:
                         self.update_account(
                             access_token,
@@ -511,7 +511,7 @@ class AccountService:
                         message = "检测到封号"
                     errors.append({"access_token": access_token, "error": message})
 
-        print(f"[account-refresh] done refreshed={refreshed} errors={len(errors)} workers={max_workers}")
+        print(f"[账户刷新] 完成 已刷新={refreshed} 错误={len(errors)} 工作线程={max_workers}")
         return {
             "refreshed": refreshed,
             "errors": errors,

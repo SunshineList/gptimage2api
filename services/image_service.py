@@ -141,7 +141,7 @@ def _retry(fn, retries: int = 4, delay: float = 2.0, retry_on_status: tuple[int,
         return last_response
     if last_error is not None:
         raise last_error
-    raise ImageGenerationError("request failed")
+    raise ImageGenerationError("请求失败")
 
 
 def _pow_config(user_agent: str) -> list:
@@ -209,7 +209,7 @@ def _chat_requirements(session: Session, access_token: str, device_id: str) -> t
         retries=4,
     )
     if not response.ok:
-        raise ImageGenerationError(response.text[:400] or f"chat-requirements failed: {response.status_code}")
+        raise ImageGenerationError(response.text[:400] or f"获取 chat-requirements 失败: {response.status_code}")
     payload = response.json()
     return payload["token"], payload.get("proofofwork") or {}
 
@@ -245,12 +245,12 @@ def _upload_image(session: Session, access_token: str, device_id: str, image_dat
         retries=3,
     )
     if not response.ok:
-        raise ImageGenerationError(f"file upload init failed: {response.status_code} {response.text[:200]}")
+        raise ImageGenerationError(f"文件上传初始化失败: {response.status_code} {response.text[:200]}")
     payload = response.json()
     upload_url = payload.get("upload_url") or ""
     file_id = payload.get("file_id") or ""
     if not upload_url or not file_id:
-        raise ImageGenerationError("file upload init returned no upload_url or file_id")
+        raise ImageGenerationError("文件上传初始化未返回 upload_url 或 file_id")
 
     put_resp = _retry(
         lambda: session.put(
@@ -266,7 +266,7 @@ def _upload_image(session: Session, access_token: str, device_id: str, image_dat
         retries=3,
     )
     if not (200 <= put_resp.status_code < 300):
-        raise ImageGenerationError(f"file upload PUT failed: {put_resp.status_code}")
+        raise ImageGenerationError(f"文件上传 PUT 失败: {put_resp.status_code}")
 
     process_resp = _retry(
         lambda: session.post(
@@ -287,7 +287,7 @@ def _upload_image(session: Session, access_token: str, device_id: str, image_dat
         retries=3,
     )
     if not process_resp.ok:
-        raise ImageGenerationError(f"file process failed: {process_resp.status_code}")
+        raise ImageGenerationError(f"文件处理失败: {process_resp.status_code}")
     return file_id
 
 
@@ -670,8 +670,8 @@ def generate_image_result(access_token: str, prompt: str, model: str = DEFAULT_M
     try:
         upstream_model = _resolve_upstream_model(access_token, model)
         print(
-            f"[image-upstream] start token={access_token[:12]}... "
-            f"requested_model={model} upstream_model={upstream_model}"
+            f"[图片上游] 开始 token={access_token[:12]}... "
+            f"请求模型={model} 上游模型={upstream_model}"
         )
         device_id = _bootstrap(session, fp)
         chat_token, pow_info = _chat_requirements(session, access_token, device_id)
@@ -715,13 +715,13 @@ def generate_image_result(access_token: str, prompt: str, model: str = DEFAULT_M
         else:
             result_data = {"b64_json": _download_as_base64(session, download_url), "revised_prompt": prompt}
 
-        print(f"[image-upstream] success token={access_token[:12]}... images=1 format={response_format}")
+        print(f"[图片上游] 成功 token={access_token[:12]}... 图片数=1 格式={response_format}")
         return {
             "created": time.time_ns() // 1_000_000_000,
             "data": [result_data],
         }
     except Exception as exc:
-        print(f"[image-upstream] fail token={access_token[:12]}... error={exc}")
+        print(f"[图片上游] 失败 token={access_token[:12]}... 错误={exc}")
         raise
     finally:
         session.close()
@@ -773,18 +773,18 @@ def edit_image_result(
     prompt = str(prompt or "").strip()
     access_token = str(access_token or "").strip()
     if not prompt:
-        raise ImageGenerationError("prompt is required")
+        raise ImageGenerationError("提示词不能为空")
     if not access_token:
-        raise ImageGenerationError("token is required")
+        raise ImageGenerationError("令牌不能为空")
     if not images:
-        raise ImageGenerationError("image is required")
+        raise ImageGenerationError("图片不能为空")
 
     session, fp = _new_session(access_token)
     try:
         upstream_model = _resolve_upstream_model(access_token, model)
         print(
-            f"[image-edit-upstream] start token={access_token[:12]}... "
-            f"requested_model={model} upstream_model={upstream_model} images={len(images)}"
+            f"[图片编辑上游] 开始 token={access_token[:12]}... "
+            f"请求模型={model} 上游模型={upstream_model} 图片数={len(images)}"
         )
         device_id = _bootstrap(session, fp)
 
@@ -794,7 +794,7 @@ def edit_image_result(
                 raise ImageGenerationError("image is required")
 
             file_id = _upload_image(session, access_token, device_id, image_data, file_name, mime_type)
-            print(f"[image-edit-upstream] uploaded file_id={file_id}")
+            print(f"[图片编辑上游] 已上传文件 ID={file_id}")
             image_width, image_height = _get_image_dimensions(image_data)
             uploaded_images.append(
                 EditInputImage(
@@ -853,13 +853,13 @@ def edit_image_result(
         else:
             result_data = {"b64_json": _download_as_base64(session, download_url), "revised_prompt": prompt}
 
-        print(f"[image-edit-upstream] success token={access_token[:12]}... inputs={len(uploaded_images)} format={response_format}")
+        print(f"[图片编辑上游] 成功 token={access_token[:12]}... 输入数={len(uploaded_images)} 格式={response_format}")
         return {
             "created": time.time_ns() // 1_000_000_000,
             "data": [result_data],
         }
     except Exception as exc:
-        print(f"[image-edit-upstream] fail token={access_token[:12]}... error={exc}")
+        print(f"[图片编辑上游] 失败 token={access_token[:12]}... 错误={exc}")
         raise
     finally:
         session.close()

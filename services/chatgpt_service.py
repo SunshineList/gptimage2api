@@ -53,10 +53,10 @@ class ChatGPTService:
                 try:
                     request_token = self.account_service.get_available_access_token()
                 except RuntimeError as exc:
-                    print(f"[image-generate] stop index={index}/{n} error={exc}")
+                    print(f"[图片生成] 停止 索引={index}/{n} 错误={exc}")
                     break
 
-                print(f"[image-generate] start pooled token={request_token[:12]}... model={model} index={index}/{n}")
+                print(f"[图片生成] 开始 池化令牌={request_token[:12]}... 模型={model} 索引={index}/{n}")
                 try:
                     result = generate_image_result(request_token, prompt, model, response_format, base_url)
                     account = self.account_service.mark_image_result(request_token, success=True)
@@ -66,25 +66,25 @@ class ChatGPTService:
                     if isinstance(data, list):
                         image_items.extend(item for item in data if isinstance(item, dict))
                     print(
-                        f"[image-generate] success pooled token={request_token[:12]}... "
-                        f"quota={account.get('quota') if account else 'unknown'} status={account.get('status') if account else 'unknown'}"
+                        f"[图片生成] 成功 池化令牌={request_token[:12]}... "
+                        f"额度={account.get('quota') if account else '未知'} 状态={account.get('status') if account else '未知'}"
                     )
                     break
                 except ImageGenerationError as exc:
                     account = self.account_service.mark_image_result(request_token, success=False)
                     message = str(exc)
                     print(
-                        f"[image-generate] fail pooled token={request_token[:12]}... "
-                        f"error={message} quota={account.get('quota') if account else 'unknown'} status={account.get('status') if account else 'unknown'}"
+                        f"[图片生成] 失败 池化令牌={request_token[:12]}... "
+                        f"错误={message} 额度={account.get('quota') if account else '未知'} 状态={account.get('status') if account else '未知'}"
                     )
                     if is_token_invalid_error(message):
                         self.account_service.remove_token(request_token)
-                        print(f"[image-generate] remove invalid token={request_token[:12]}...")
+                        print(f"[图片生成] 移除无效令牌={request_token[:12]}...")
                         continue
                     break
 
         if not image_items:
-            raise ImageGenerationError("image generation failed")
+            raise ImageGenerationError("图片生成失败")
 
         return {
             "created": created,
@@ -104,19 +104,19 @@ class ChatGPTService:
         image_items: list[dict[str, object]] = []
         normalized_images = list(images)
         if not normalized_images:
-            raise ImageGenerationError("image is required")
+            raise ImageGenerationError("需要图片文件")
 
         for index in range(1, n + 1):
             while True:
                 try:
                     request_token = self.account_service.get_available_access_token()
                 except RuntimeError as exc:
-                    print(f"[image-edit] stop index={index}/{n} error={exc}")
+                    print(f"[图片编辑] 停止 索引={index}/{n} 错误={exc}")
                     break
 
                 print(
-                    f"[image-edit] start pooled token={request_token[:12]}... "
-                    f"model={model} index={index}/{n} images={len(normalized_images)}"
+                    f"[图片编辑] 开始 池化令牌={request_token[:12]}... "
+                    f"模型={model} 索引={index}/{n} 图片数={len(normalized_images)}"
                 )
                 try:
                     result = edit_image_result(request_token, prompt, normalized_images, model, response_format, base_url)
@@ -127,25 +127,25 @@ class ChatGPTService:
                     if isinstance(data, list):
                         image_items.extend(item for item in data if isinstance(item, dict))
                     print(
-                        f"[image-edit] success pooled token={request_token[:12]}... "
-                        f"quota={account.get('quota') if account else 'unknown'} status={account.get('status') if account else 'unknown'}"
+                        f"[图片编辑] 成功 池化令牌={request_token[:12]}... "
+                        f"额度={account.get('quota') if account else '未知'} 状态={account.get('status') if account else '未知'}"
                     )
                     break
                 except ImageGenerationError as exc:
                     account = self.account_service.mark_image_result(request_token, success=False)
                     message = str(exc)
                     print(
-                        f"[image-edit] fail pooled token={request_token[:12]}... "
-                        f"error={message} quota={account.get('quota') if account else 'unknown'} status={account.get('status') if account else 'unknown'}"
+                        f"[图片编辑] 失败 池化令牌={request_token[:12]}... "
+                        f"错误={message} 额度={account.get('quota') if account else '未知'} 状态={account.get('status') if account else '未知'}"
                     )
                     if is_token_invalid_error(message):
                         self.account_service.remove_token(request_token)
-                        print(f"[image-edit] remove invalid token={request_token[:12]}...")
+                        print(f"[图片编辑] 移除无效令牌={request_token[:12]}...")
                         continue
                     break
 
         if not image_items:
-            raise ImageGenerationError("image edit failed")
+            raise ImageGenerationError("图片编辑失败")
 
         return {
             "created": created,
@@ -156,17 +156,17 @@ class ChatGPTService:
         if not is_image_chat_request(body):
             raise HTTPException(
                 status_code=400,
-                detail={"error": "only image generation requests are supported on this endpoint"},
+                detail={"error": "该接口仅支持图片生成请求"},
             )
 
         if bool(body.get("stream")):
-            raise HTTPException(status_code=400, detail={"error": "stream is not supported for image generation"})
+            raise HTTPException(status_code=400, detail={"error": "图片生成不支持流式输出"})
 
         model = str(body.get("model") or "gpt-image-1").strip() or "gpt-image-1"
         n = parse_image_count(body.get("n"))
         prompt = extract_chat_prompt(body)
         if not prompt:
-            raise HTTPException(status_code=400, detail={"error": "prompt is required"})
+            raise HTTPException(status_code=400, detail={"error": "提示词不能为空"})
 
         image_info = extract_chat_image(body)
         try:
@@ -182,17 +182,17 @@ class ChatGPTService:
 
     def create_response(self, body: dict[str, object]) -> dict[str, object]:
         if bool(body.get("stream")):
-            raise HTTPException(status_code=400, detail={"error": "stream is not supported"})
+            raise HTTPException(status_code=400, detail={"error": "不支持流式输出"})
 
         if not has_response_image_generation_tool(body):
             raise HTTPException(
                 status_code=400,
-                detail={"error": "only image_generation tool requests are supported on this endpoint"},
+                detail={"error": "该接口仅支持 image_generation 工具请求"},
             )
 
         prompt = extract_response_prompt(body.get("input"))
         if not prompt:
-            raise HTTPException(status_code=400, detail={"error": "input text is required"})
+            raise HTTPException(status_code=400, detail={"error": "输入文本不能为空"})
 
         image_info = _extract_response_image(body.get("input"))
         model = str(body.get("model") or "gpt-5").strip() or "gpt-5"
@@ -224,7 +224,7 @@ class ChatGPTService:
             )
 
         if not output:
-            raise HTTPException(status_code=502, detail={"error": "image generation failed"})
+            raise HTTPException(status_code=502, detail={"error": "图片生成失败"})
 
         created = int(image_result.get("created") or 0)
         return {
