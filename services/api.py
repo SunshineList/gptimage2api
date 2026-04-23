@@ -312,16 +312,13 @@ def create_app() -> FastAPI:
 
     @router.get("/api/me")
     async def get_me(authorization: str | None = Header(default=None)):
-        try:
-            auth_info = require_auth(authorization)
-            return {
-                "role": auth_info["role"],
-                "name": auth_info.get("user", {}).get("name") if auth_info["role"] == "user" else "管理员",
-                "quota": auth_info.get("user", {}).get("quota") if auth_info["role"] == "user" else -1,
-                "used": auth_info.get("user", {}).get("used") if auth_info["role"] == "user" else 0
-            }
-        except Exception:
-            return {"role": "guest"}
+        auth_info = require_auth(authorization)
+        return {
+            "role": auth_info["role"],
+            "name": auth_info.get("user", {}).get("name") if auth_info["role"] == "user" else "管理员",
+            "quota": auth_info.get("user", {}).get("quota") if auth_info["role"] == "user" else -1,
+            "used": auth_info.get("user", {}).get("used") if auth_info["role"] == "user" else 0
+        }
 
     @router.get("/api/settings")
     async def get_settings(authorization: str | None = Header(default=None)):

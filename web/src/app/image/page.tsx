@@ -196,6 +196,16 @@ export default function ImagePage() {
   );
 
   useEffect(() => {
+    import("@/store/auth").then(({ getStoredAuthKey }) => {
+      void getStoredAuthKey().then((key) => {
+        if (!key) {
+          router.replace("/login");
+        }
+      });
+    });
+  }, [router]);
+
+  useEffect(() => {
     conversationsRef.current = conversations;
   }, [conversations]);
 
