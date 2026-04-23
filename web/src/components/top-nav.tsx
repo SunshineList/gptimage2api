@@ -7,7 +7,7 @@ import { useEffect, useState } from "react";
 import webConfig from "@/constants/common-env";
 import { clearStoredAuthKey } from "@/store/auth";
 import { cn } from "@/lib/utils";
-import { fetchMe, type MeResponse } from "@/lib/api";
+import { fetchMe, MeResponse } from "@/lib/api";
 
 export function TopNav() {
   const pathname = usePathname();

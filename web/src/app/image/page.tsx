@@ -7,7 +7,8 @@ import { ImageComposer } from "@/app/image/components/image-composer";
 import { ImageResults, type ImageLightboxItem } from "@/app/image/components/image-results";
 import { ImageSidebar } from "@/app/image/components/image-sidebar";
 import { ImageLightbox } from "@/components/image-lightbox";
-import { editImage, fetchMe, generateImage, type Account } from "@/lib/api";
+import { editImage, fetchMe, generateImage, MeResponse } from "@/lib/api";
+import { getStoredAuthKey } from "@/store/auth";
 import {
   clearImageConversations,
   deleteImageConversation,
@@ -46,10 +47,6 @@ function formatConversationTime(value: string) {
   }).format(date);
 }
 
-function formatAvailableQuota(accounts: Account[]) {
-  const availableAccounts = accounts.filter((account) => account.status !== "禁用");
-  return String(availableAccounts.reduce((sum, account) => sum + Math.max(0, account.quota), 0));
-}
 
 function createId() {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -196,12 +193,10 @@ export default function ImagePage() {
   );
 
   useEffect(() => {
-    import("@/store/auth").then(({ getStoredAuthKey }) => {
-      void getStoredAuthKey().then((key) => {
-        if (!key) {
-          router.replace("/login");
-        }
-      });
+    void getStoredAuthKey().then((key) => {
+      if (!key) {
+        router.replace("/login");
+      }
     });
   }, [router]);
 
