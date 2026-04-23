@@ -577,13 +577,16 @@ def create_app() -> FastAPI:
             return {"ok": True}
         raise HTTPException(status_code=404, detail={"error": "图片不存在"})
 
-    @router.post("/api/plaza/publish/{image_id}")
-    async def publish_to_plaza(image_id: str, auth: dict = Depends(get_active_auth)):
+    @router.post("/api/plaza")
+    async def publish_to_plaza(body: Dict[str, str], auth: dict = Depends(get_active_auth)):
+        image_id = body.get("image_id")
+        if not image_id:
+            raise HTTPException(status_code=400, detail="Missing image_id")
         if plaza_service.publish_to_plaza(image_id, auth["key"]):
             return {"ok": True}
         raise HTTPException(status_code=400, detail={"error": "发布失败"})
 
-    @router.delete("/api/plaza/publish/{image_id}")
+    @router.delete("/api/plaza/{image_id}")
     async def unpublish_from_plaza(image_id: str, auth: dict = Depends(get_active_auth)):
         if plaza_service.unpublish_from_plaza(image_id, auth["key"]):
             return {"ok": True}

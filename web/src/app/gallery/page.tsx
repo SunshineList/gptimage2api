@@ -136,7 +136,7 @@ export default function GalleryPage() {
                   <div className="space-y-6">
                     <div>
                       <h4 className="flex items-center gap-2 text-sm font-semibold text-stone-900 mb-2">
-                        <Info className="size-4 text-purple-500" /> 提示词
+                        <Info className="size-4 text-indigo-500" /> 提示词
                       </h4>
                       <div className="rounded-2xl bg-stone-50 p-4 text-sm border border-stone-100">
                         {selectedImage?.prompt}

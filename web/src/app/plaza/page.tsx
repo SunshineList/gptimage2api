@@ -33,14 +33,14 @@ export default function PlazaPage() {
         <h1 className="text-4xl font-extrabold tracking-tight text-stone-950 font-['Fira_Code'] sm:text-5xl">创作广场</h1>
         <p className="mt-4 text-lg text-stone-500 font-['Fira_Sans']">发现全球用户分享的精美 AI 艺术作品及提示词。</p>
         <div className="mt-6 flex justify-center gap-2">
-            <Badge variant="secondary" className="bg-purple-100 text-purple-700 hover:bg-purple-100 px-3 py-1">活跃社区</Badge>
+            <Badge variant="secondary" className="bg-indigo-100 text-indigo-700 hover:bg-indigo-100 px-3 py-1">活跃社区</Badge>
             <Badge variant="secondary" className="bg-green-100 text-green-700 hover:bg-green-100 px-3 py-1">{posts.length} 件作品</Badge>
         </div>
       </div>
 
       {isLoading ? (
         <div className="flex h-64 items-center justify-center">
-          <LoaderCircle className="size-8 animate-spin text-purple-500" />
+          <LoaderCircle className="size-8 animate-spin text-indigo-500" />
         </div>
       ) : posts.length === 0 ? (
         <Card className="flex h-64 flex-col items-center justify-center border-dashed border-stone-200 bg-stone-50/50">
@@ -49,7 +49,7 @@ export default function PlazaPage() {
       ) : (
         <div className="columns-1 gap-6 sm:columns-2 lg:columns-3 xl:columns-4">
           {posts.map((post) => (
-            <Card key={post.id} className="mb-6 break-inside-avoid overflow-hidden rounded-[28px] border-none bg-white shadow-sm ring-1 ring-stone-100 transition-all hover:shadow-2xl hover:ring-purple-200">
+            <Card key={post.id} className="mb-6 break-inside-avoid overflow-hidden rounded-[28px] border-none bg-white shadow-sm ring-1 ring-stone-100 transition-all hover:shadow-2xl hover:ring-indigo-200">
               <div className="relative group overflow-hidden">
                 <img
                   src={post.image_url}
@@ -62,7 +62,7 @@ export default function PlazaPage() {
               <div className="p-5">
                 <div className="mb-4 space-y-3">
                   <div className="flex items-start gap-2">
-                    <MessageSquareQuote className="size-4 mt-1 text-purple-500 shrink-0" />
+                    <MessageSquareQuote className="size-4 mt-1 text-indigo-500 shrink-0" />
                     <p className="text-sm text-stone-700 leading-relaxed italic">"{post.prompt}"</p>
                   </div>
                 </div>

@@ -1,4 +1,4 @@
-import { httpRequest } from "@/lib/request";
+import { httpRequest, request } from "@/lib/request";
 
 export type AccountType = "Free" | "Plus" | "ProLite" | "Pro" | "Team";
 export type AccountStatus = "正常" | "限流" | "异常" | "禁用";
