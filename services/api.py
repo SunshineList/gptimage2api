@@ -303,8 +303,8 @@ def create_app() -> FastAPI:
 
     @router.post("/auth/login")
     async def login(authorization: str | None = Header(default=None)):
-        require_admin(authorization)
-        return {"ok": True, "version": app_version}
+        require_auth(authorization)
+        return {"ok": True}
 
     @router.get("/version")
     async def get_version():
