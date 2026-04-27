@@ -3,11 +3,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { MessageSquarePlus, X } from "lucide-react";
 
 import { ImageComposer } from "@/app/image/components/image-composer";
 import { ImageResults, type ImageLightboxItem } from "@/app/image/components/image-results";
 import { ImageSidebar } from "@/app/image/components/image-sidebar";
 import { ImageLightbox } from "@/components/image-lightbox";
+import { cn } from "@/lib/utils";
 import {
   editImage,
   fetchMe,
@@ -186,6 +188,7 @@ export default function ImagePage() {
   const [lightboxImages, setLightboxImages] = useState<ImageLightboxItem[]>([]);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const parsedCount = useMemo(() => Math.max(1, Math.min(10, Number(imageCount) || 1)), [imageCount]);
   const selectedConversation = useMemo(
@@ -301,6 +304,11 @@ export default function ImagePage() {
     } else {
       window.localStorage.removeItem(ACTIVE_CONVERSATION_STORAGE_KEY);
     }
+  }, [selectedConversationId]);
+
+  // 关闭侧边栏当选择会话时 (仅移动端)
+  useEffect(() => {
+    setIsSidebarOpen(false);
   }, [selectedConversationId]);
 
   useEffect(() => {
@@ -498,10 +506,10 @@ export default function ImagePage() {
           turns: conversation.turns.map((turn) =>
             turn.id === queuedTurn.id
               ? {
-                  ...turn,
-                  status: "generating",
-                  error: undefined,
-                }
+                ...turn,
+                status: "generating",
+                error: undefined,
+              }
               : turn,
           ),
         };
@@ -528,10 +536,10 @@ export default function ImagePage() {
               turns: conversation.turns.map((turn) =>
                 turn.id === queuedTurn.id
                   ? {
-                      ...turn,
-                      status: existingFailedCount > 0 ? "error" : existingSuccessCount > 0 ? "success" : "queued",
-                      error: existingFailedCount > 0 ? `其中 ${existingFailedCount} 张未成功生成` : undefined,
-                    }
+                    ...turn,
+                    status: existingFailedCount > 0 ? "error" : existingSuccessCount > 0 ? "success" : "queued",
+                    error: existingFailedCount > 0 ? `其中 ${existingFailedCount} 张未成功生成` : undefined,
+                  }
                   : turn,
               ),
             };
@@ -566,9 +574,9 @@ export default function ImagePage() {
                   turns: conversation.turns.map((turn) =>
                     turn.id === queuedTurn.id
                       ? {
-                          ...turn,
-                          images: turn.images.map((image) => (image.id === nextImage.id ? nextImage : image)),
-                        }
+                        ...turn,
+                        images: turn.images.map((image) => (image.id === nextImage.id ? nextImage : image)),
+                      }
                       : turn,
                   ),
                 };
@@ -595,9 +603,9 @@ export default function ImagePage() {
                   turns: conversation.turns.map((turn) =>
                     turn.id === queuedTurn.id
                       ? {
-                          ...turn,
-                          images: turn.images.map((image) => (image.id === failedImage.id ? failedImage : image)),
-                        }
+                        ...turn,
+                        images: turn.images.map((image) => (image.id === failedImage.id ? failedImage : image)),
+                      }
                       : turn,
                   ),
                 };
@@ -627,10 +635,10 @@ export default function ImagePage() {
             turns: conversation.turns.map((turn) =>
               turn.id === queuedTurn.id
                 ? {
-                    ...turn,
-                    status: failedCount > 0 ? "error" : "success",
-                    error: failedCount > 0 ? `其中 ${failedCount} 张未成功生成` : undefined,
-                  }
+                  ...turn,
+                  status: failedCount > 0 ? "error" : "success",
+                  error: failedCount > 0 ? `其中 ${failedCount} 张未成功生成` : undefined,
+                }
                 : turn,
             ),
           };
@@ -647,13 +655,13 @@ export default function ImagePage() {
             turns: conversation.turns.map((turn) =>
               turn.id === queuedTurn.id
                 ? {
-                    ...turn,
-                    status: "error",
-                    error: message,
-                    images: turn.images.map((image) =>
-                      image.status === "loading" ? { ...image, status: "error", error: message } : image,
-                    ),
-                  }
+                  ...turn,
+                  status: "error",
+                  error: message,
+                  images: turn.images.map((image) =>
+                    image.status === "loading" ? { ...image, status: "error", error: message } : image,
+                  ),
+                }
                 : turn,
             ),
           };
@@ -720,17 +728,17 @@ export default function ImagePage() {
 
     const baseConversation: ImageConversation = targetConversation
       ? {
-          ...targetConversation,
-          updatedAt: now,
-          turns: [...targetConversation.turns, draftTurn],
-        }
+        ...targetConversation,
+        updatedAt: now,
+        turns: [...targetConversation.turns, draftTurn],
+      }
       : {
-          id: conversationId,
-          title: buildConversationTitle(prompt),
-          createdAt: now,
-          updatedAt: now,
-          turns: [draftTurn],
-        };
+        id: conversationId,
+        title: buildConversationTitle(prompt),
+        createdAt: now,
+        updatedAt: now,
+        turns: [draftTurn],
+      };
 
     setSelectedConversationId(conversationId);
     clearComposerInputs();
@@ -750,19 +758,51 @@ export default function ImagePage() {
 
   return (
     <>
-      <section className="mx-auto grid h-[calc(100vh-5rem)] min-h-0 w-full max-w-[1380px] grid-cols-1 gap-3 px-3 pb-6 lg:grid-cols-[240px_minmax(0,1fr)]">
-        <ImageSidebar
-          conversations={conversations}
-          isLoadingHistory={isLoadingHistory}
-          selectedConversationId={selectedConversationId}
-          onCreateDraft={handleCreateDraft}
-          onClearHistory={handleClearHistory}
-          onSelectConversation={setSelectedConversationId}
-          onDeleteConversation={handleDeleteConversation}
-          formatConversationTime={formatConversationTime}
-        />
+      <section className="mx-auto grid h-[calc(100vh-5.5rem)] min-h-0 w-full max-w-[1380px] grid-cols-1 gap-3 px-1 pb-4 sm:px-3 sm:pb-6 lg:h-[calc(100vh-5rem)] lg:grid-cols-[240px_minmax(0,1fr)]">
+        <div className={cn(
+          "fixed inset-0 z-[100] bg-white transition-all lg:relative lg:inset-auto lg:z-0 lg:block lg:bg-transparent",
+          isSidebarOpen ? "block" : "hidden"
+        )}>
+          <div className="flex h-full flex-col px-4 pt-6 lg:p-0">
+            <div className="mb-4 flex items-center justify-between lg:hidden">
+              <span className="text-lg font-bold">历史对话</span>
+              <button
+                type="button"
+                className="flex size-9 items-center justify-center rounded-xl bg-stone-100 text-stone-600"
+                onClick={() => setIsSidebarOpen(false)}
+              >
+                <X className="size-5" />
+              </button>
+            </div>
+            <ImageSidebar
+              conversations={conversations}
+              isLoadingHistory={isLoadingHistory}
+              selectedConversationId={selectedConversationId}
+              onCreateDraft={handleCreateDraft}
+              onClearHistory={handleClearHistory}
+              onSelectConversation={setSelectedConversationId}
+              onDeleteConversation={handleDeleteConversation}
+              formatConversationTime={formatConversationTime}
+            />
+          </div>
+        </div>
 
-        <div className="flex min-h-0 flex-col gap-4">
+        <div className="flex min-h-0 flex-col gap-3 sm:gap-4">
+          <div className="flex items-center gap-2 lg:hidden">
+            <button
+              type="button"
+              className="flex h-10 items-center gap-2 rounded-xl bg-white px-4 text-sm font-medium text-stone-600 shadow-sm border border-stone-100"
+              onClick={() => setIsSidebarOpen(true)}
+            >
+              <MessageSquarePlus className="size-4" />
+              历史记录
+            </button>
+            {selectedConversation && (
+              <div className="truncate text-sm font-semibold text-stone-900">
+                {selectedConversation.title}
+              </div>
+            )}
+          </div>
           <div
             ref={resultsViewportRef}
             className="hide-scrollbar min-h-0 flex-1 overflow-y-auto px-2 py-3 sm:px-4 sm:py-4"

@@ -12,6 +12,7 @@ export type Account = {
   quota: number;
   imageQuotaUnknown?: boolean;
   email?: string | null;
+  password?: string | null;
   user_id?: string | null;
   limits_progress?: Array<{
     feature_name?: string;
@@ -100,6 +101,8 @@ export async function updateAccount(
     type?: AccountType;
     status?: AccountStatus;
     quota?: number;
+    email?: string;
+    password?: string;
   },
 ) {
   return httpRequest<AccountUpdateResponse>("/api/accounts/update", {
@@ -107,6 +110,15 @@ export async function updateAccount(
     body: {
       access_token: accessToken,
       ...updates,
+    },
+  });
+}
+
+export async function relinkAccount(accessToken: string) {
+  return httpRequest<AccountUpdateResponse>("/api/accounts/relink", {
+    method: "POST",
+    body: {
+      access_token: accessToken,
     },
   });
 }

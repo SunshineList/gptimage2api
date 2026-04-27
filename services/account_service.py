@@ -15,6 +15,8 @@ from services.config import config
 from services.proxy_service import proxy_settings
 from services.utils import anonymize_token
 from services.database import db
+from services.gpt_login import ChatGPTLogin
+from services.email_service import EmailService
 
 
 class AccountService:
@@ -107,7 +109,7 @@ class AccountService:
         token_payload = self._decode_access_token_payload(access_token)
 
         auth_payload = token_payload.get("https://api.openai.com/auth")
-        print("检测账户类型响应", auth_payload)
+        # print("检测账户类型响应", auth_payload)
         if isinstance(auth_payload, dict):
             matched = self._normalize_account_type(auth_payload.get("chatgpt_plan_type"))
             if matched:
@@ -135,6 +137,7 @@ class AccountService:
             normalized["quota"] = 0
         normalized["image_quota_unknown"] = bool(normalized.get("image_quota_unknown"))
         normalized["email"] = self._clean_token(normalized.get("email")) or None
+        normalized["password"] = self._clean_token(normalized.get("password")) or None
         normalized["user_id"] = self._clean_token(normalized.get("user_id")) or None
         limits_progress = normalized.get("limits_progress")
         normalized["limits_progress"] = limits_progress if isinstance(limits_progress, list) else []
@@ -249,6 +252,7 @@ class AccountService:
                 "quota": account.get("quota") if account.get("quota") is not None else 0,
                 "imageQuotaUnknown": bool(account.get("image_quota_unknown")),
                 "email": account.get("email"),
+                "password": account.get("password"),
                 "user_id": account.get("user_id"),
                 "limits_progress": account.get("limits_progress") or [],
                 "default_model_slug": account.get("default_model_slug"),
@@ -352,26 +356,48 @@ class AccountService:
             indexed = {self._clean_token(item.get("access_token")): dict(item) for item in self._accounts}
             added = 0
             skipped = 0
-            for access_token in cleaned_tokens:
+            for raw_input in cleaned_tokens:
+                email, password, access_token = None, None, None
+                
+                # 支持 邮箱----密码----令牌 或 邮箱----令牌 格式
+                parts = raw_input.split("----")
+                if len(parts) >= 3:
+                    email, password, access_token = parts[0], parts[1], parts[2]
+                elif len(parts) == 2:
+                    email, access_token = parts[0], parts[1]
+                else:
+                    access_token = raw_input
+                
+                access_token = self._clean_token(access_token)
+                if not access_token:
+                    continue
+                    
                 current = indexed.get(access_token)
                 if current is None:
                     added += 1
                     current = {}
                 else:
                     skipped += 1
-                account = self._normalize_account(
-                    {
-                        **current,
-                        "access_token": access_token,
-                        "type": str(current.get("type") or "Free"),
-                    }
-                )
+                
+                updates = {
+                    "access_token": access_token,
+                    "type": str(current.get("type") or "Free"),
+                }
+                if email: updates["email"] = email
+                if password: updates["password"] = password
+                
+                account = self._normalize_account({**current, **updates})
                 if account is not None:
                     indexed[access_token] = account
             self._accounts = list(indexed.values())
             self._save_accounts()
             items = self._public_items(self._accounts)
-        return {"added": added, "skipped": skipped, "items": items}
+        return {
+            "added": added,
+            "skipped": skipped,
+            "items": items,
+            "tokens": list(indexed.keys()) if tokens else [] # 返回解析后的纯 token 列表
+        }
 
 
     def remove_token(self, access_token: str) -> bool:
@@ -497,7 +523,13 @@ class AccountService:
             session.close()
 
     def refresh_accounts(self, access_tokens: list[str]) -> dict[str, Any]:
-        cleaned_tokens = self._clean_tokens(access_tokens)
+        # 兼容处理：如果传入的是 邮箱----密码----Token 格式，先提取出真正的 Token
+        actual_tokens = []
+        for raw in access_tokens:
+            parts = str(raw or "").strip().split("----")
+            actual_tokens.append(parts[-1] if parts else "")
+            
+        cleaned_tokens = self._clean_tokens(actual_tokens)
         if not cleaned_tokens:
             return {"refreshed": 0, "errors": [], "items": self.list_accounts()}
 
@@ -534,6 +566,67 @@ class AccountService:
             "errors": errors,
             "items": self.list_accounts(),
         }
+
+    def relink_account(self, access_token: str) -> dict | None:
+        """
+        通过邮箱和密码重新登录获取新 Token 并更新账号 (Relink)
+        """
+        access_token = self._clean_token(access_token)
+        account = self.get_account(access_token)
+        if not account:
+            raise ValueError("账号不存在")
+        
+        email = self._clean_token(account.get("email"))
+        password = self._clean_token(account.get("password"))
+        
+        if not email or not password:
+            raise ValueError("账号未保存邮箱或密码，无法重新登录")
+            
+        print(f"[账户重连] 开始重连 {email}")
+        
+        try:
+            # 1. 执行重新登录
+            from services.proxy_service import proxy_settings
+            proxy = proxy_settings.get_proxy_url()
+            
+            login_client = ChatGPTLogin(proxy=proxy)
+            email_svc = EmailService()
+            
+            new_token = login_client.login_web(email, password, email_svc)
+            if not new_token:
+                raise RuntimeError("登录失败，未能获取新 AccessToken")
+            
+            # 2. 如果 Token 变了，我们需要替换旧的账号记录
+            if new_token != access_token:
+                print(f"[账户重连] Token 已更换: {anonymize_token(access_token)} -> {anonymize_token(new_token)}")
+                # 删除旧的
+                self.delete_accounts([access_token])
+                # 添加新的 (带上原有的元数据，如 email/password)
+                self.add_accounts([f"{email}----{password}----{new_token}"])
+                # 刷新状态
+                return self.refresh_account_state(new_token)
+            else:
+                # Token 没变，直接刷新状态
+                return self.refresh_account_state(access_token)
+        except Exception as e:
+            print(f"      [!] 重连失败: {e}")
+            raise e
+
+    def relink_account_background(self, access_token: str):
+        """
+        后台执行重连
+        """
+        try:
+            # 标记状态
+            self.update_account(access_token, {"status": "重连中..."})
+            self.relink_account(access_token)
+        except Exception as e:
+            print(f"[账户重连] 后台任务异常: {e}")
+            # 尝试在数据库中记录失败原因
+            try:
+                self.update_account(access_token, {"status": f"重连失败: {e}"})
+            except: pass
+                
 
 
 account_service = AccountService(config.accounts_file)

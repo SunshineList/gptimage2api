@@ -475,7 +475,7 @@ export function AccountImportDialog({ disabled, onImported }: AccountImportDialo
               {method === "menu"
                 ? "选择一种导入方式。导入成功后会自动拉取邮箱、类型和额度。"
                 : method === "token"
-                  ? "支持手动粘贴或从 TXT 文件导入，一行一个 Token。"
+                  ? "支持手动粘贴或从 TXT 文件导入，一行一个 Token。支持格式：邮箱----密码----Token 或直接粘贴 Token。"
                   : method === "session"
                     ? "粘贴完整 Session JSON，系统会自动提取 accessToken。"
                     : "支持一次读取多个本地 JSON 文件，并在提交前做数量确认。"}

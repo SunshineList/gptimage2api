@@ -89,6 +89,15 @@ class UserService:
                     return dict(user)
             return None
 
+    def check_quota(self, key: str, amount: int = 1) -> bool:
+        with self._lock:
+            for user in self._users:
+                if user.get("key") == key:
+                    if user.get("quota", 0) == -1:
+                        return True
+                    return user.get("used", 0) + amount <= user.get("quota", 0)
+            return False
+
     def use_quota(self, key: str, amount: int = 1) -> bool:
         with self._lock:
             for user in self._users:

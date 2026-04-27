@@ -11,6 +11,7 @@ import {
   CircleOff,
   Copy,
   Download,
+  Link,
   LoaderCircle,
   Pencil,
   RefreshCw,
@@ -44,6 +45,7 @@ import {
   deleteAccounts,
   fetchAccounts,
   refreshAccounts,
+  relinkAccount,
   updateAccount,
   type Account,
   type AccountStatus,
@@ -170,10 +172,10 @@ function normalizeAccounts(items: Account[]): Account[] {
     ...item,
     type:
       item.type === "Plus" ||
-      item.type === "ProLite" ||
-      item.type === "Team" ||
-      item.type === "Pro" ||
-      item.type === "Free"
+        item.type === "ProLite" ||
+        item.type === "Team" ||
+        item.type === "Pro" ||
+        item.type === "Free"
         ? item.type
         : "Free",
   }));
@@ -192,10 +194,13 @@ export default function AccountsPage() {
   const [editType, setEditType] = useState<AccountType>("Free");
   const [editStatus, setEditStatus] = useState<AccountStatus>("正常");
   const [editQuota, setEditQuota] = useState("0");
+  const [editEmail, setEditEmail] = useState("");
+  const [editPassword, setEditPassword] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [isRelinking, setIsRelinking] = useState<string | null>(null);
 
   const copyToClipboard = async (text: string) => {
     try {
@@ -353,6 +358,8 @@ export default function AccountsPage() {
     setEditType(account.type);
     setEditStatus(account.status);
     setEditQuota(String(account.quota));
+    setEditEmail(account.email ?? "");
+    setEditPassword(account.password ?? "");
   };
 
   const handleUpdateAccount = async () => {
@@ -366,6 +373,8 @@ export default function AccountsPage() {
         type: editType,
         status: editStatus,
         quota: Number(editQuota || 0),
+        email: editEmail,
+        password: editPassword,
       });
       setAccounts(normalizeAccounts(data.items));
       setSelectedIds((prev) => prev.filter((id) => data.items.some((item) => item.id === id)));
@@ -376,6 +385,29 @@ export default function AccountsPage() {
       toast.error(message);
     } finally {
       setIsUpdating(false);
+    }
+  };
+
+  const handleRelinkAccount = async (accessToken: string) => {
+    const account = accounts.find((a) => a.access_token === accessToken);
+    if (!account?.email || !account?.password) {
+      toast.error("账号未保存邮箱或密码，无法重新登录刷新");
+      return;
+    }
+
+    setIsRelinking(accessToken);
+    toast.info("正在尝试重新登录并获取新 Token，这可能需要一分钟左右...", { duration: 5000 });
+    
+    try {
+      const data = await relinkAccount(accessToken);
+      setAccounts(normalizeAccounts(data.items));
+      setSelectedIds((prev) => prev.filter((id) => data.items.some((item) => item.id === id)));
+      toast.success("账号重连成功，Token 已更新");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "账号重连失败";
+      toast.error(message);
+    } finally {
+      setIsRelinking(null);
     }
   };
 
@@ -400,21 +432,22 @@ export default function AccountsPage() {
         <div className="flex flex-wrap items-center gap-2">
           <Button
             variant="outline"
-            className="h-10 rounded-xl border-stone-200 bg-white/80 px-4 text-stone-700 hover:bg-white"
+            className="h-9 rounded-xl border-stone-200 bg-white/80 px-3 text-stone-700 hover:bg-white sm:h-10 sm:px-4"
             onClick={() => void loadAccounts()}
             disabled={isLoading || isRefreshing || isDeleting}
           >
             <RefreshCw className={cn("size-4", isLoading ? "animate-spin" : "")} />
-            刷新
+            <span className="hidden sm:inline">刷新</span>
           </Button>
           <Button
             variant="outline"
-            className="h-10 rounded-xl border-stone-200 bg-white/80 px-4 text-stone-700 hover:bg-white"
+            className="h-9 rounded-xl border-stone-200 bg-white/80 px-3 text-stone-700 hover:bg-white sm:h-10 sm:px-4"
             onClick={() => void handleRefreshAccounts(accounts.map((item) => item.access_token))}
             disabled={isLoading || isRefreshing || isDeleting || accounts.length === 0}
           >
             <RefreshCw className={cn("size-4", isRefreshing ? "animate-spin" : "")} />
-            一键刷新所有账号信息和额度
+            <span className="hidden sm:inline">一键刷新所有</span>
+            <span className="inline sm:hidden">全刷</span>
           </Button>
           <AccountImportDialog
             disabled={isLoading || isRefreshing || isDeleting}
@@ -426,12 +459,13 @@ export default function AccountsPage() {
           />
           <Button
             variant="outline"
-            className="h-10 rounded-xl border-stone-200 bg-white/80 px-4 text-stone-700 hover:bg-white"
+            className="h-9 rounded-xl border-stone-200 bg-white/80 px-3 text-stone-700 hover:bg-white sm:h-10 sm:px-4"
             onClick={() => downloadTokens(accounts)}
             disabled={accounts.length === 0}
           >
             <Download className="size-4" />
-            导出全部 Token
+            <span className="hidden sm:inline">导出全部 Token</span>
+            <span className="inline sm:hidden">导出</span>
           </Button>
         </div>
       </section>
@@ -480,6 +514,25 @@ export default function AccountsPage() {
               </Select>
             </div>
             <div className="space-y-2">
+              <label className="text-sm font-medium text-stone-700">邮箱</label>
+              <Input
+                value={editEmail}
+                onChange={(event) => setEditEmail(event.target.value)}
+                className="h-11 rounded-xl border-stone-200 bg-white"
+                placeholder="账号邮箱"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-stone-700">密码</label>
+              <Input
+                type="password"
+                value={editPassword}
+                onChange={(event) => setEditPassword(event.target.value)}
+                className="h-11 rounded-xl border-stone-200 bg-white"
+                placeholder="账号密码 (用于刷新 Token)"
+              />
+            </div>
+            <div className="space-y-2">
               <label className="text-sm font-medium text-stone-700">额度</label>
               <Input
                 value={editQuota}
@@ -510,19 +563,19 @@ export default function AccountsPage() {
       </Dialog>
 
       <section className="space-y-3">
-        <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
           {metricCards.map((item) => {
             const Icon = item.icon;
             const value = summary[item.key];
             return (
               <Card key={item.key} className="rounded-2xl border-white/80 bg-white/90 shadow-sm">
-                <CardContent className="p-4">
-                  <div className="mb-4 flex items-start justify-between">
-                    <span className="text-xs font-medium text-stone-400">{item.label}</span>
-                    <Icon className="size-4 text-stone-400" />
+                <CardContent className="p-3 sm:p-4">
+                  <div className="mb-2 flex items-start justify-between sm:mb-4">
+                    <span className="text-[10px] font-medium text-stone-400 sm:text-xs">{item.label}</span>
+                    <Icon className="size-3.5 text-stone-400 sm:size-4" />
                   </div>
-                  <div className={cn("text-[1.75rem] font-semibold tracking-tight", item.color)}>
-                    <span className={typeof value === "number" ? "" : "text-[1.1rem]"}>
+                  <div className={cn("text-xl font-semibold tracking-tight sm:text-[1.75rem]", item.color)}>
+                    <span className={typeof value === "number" ? "" : "text-sm sm:text-[1.1rem]"}>
                       {typeof value === "number" ? formatCompact(value) : value}
                     </span>
                   </div>
@@ -542,8 +595,8 @@ export default function AccountsPage() {
             </Badge>
           </div>
 
-          <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
-            <div className="relative min-w-[260px]">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:flex-wrap lg:flex-nowrap">
+            <div className="relative w-full lg:min-w-[260px]">
               <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-stone-400" />
               <Input
                 value={query}
@@ -555,42 +608,44 @@ export default function AccountsPage() {
                 className="h-10 rounded-xl border-stone-200 bg-white/85 pl-10"
               />
             </div>
-            <Select
-              value={typeFilter}
-              onValueChange={(value) => {
-                setTypeFilter(value as AccountType | "all");
-                setPage(1);
-              }}
-            >
-              <SelectTrigger className="h-10 w-full rounded-xl border-stone-200 bg-white/85 lg:w-[150px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {accountTypeOptions.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select
-              value={statusFilter}
-              onValueChange={(value) => {
-                setStatusFilter(value as AccountStatus | "all");
-                setPage(1);
-              }}
-            >
-              <SelectTrigger className="h-10 w-full rounded-xl border-stone-200 bg-white/85 lg:w-[150px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {accountStatusOptions.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="flex gap-2 w-full lg:w-auto">
+              <Select
+                value={typeFilter}
+                onValueChange={(value) => {
+                  setTypeFilter(value as AccountType | "all");
+                  setPage(1);
+                }}
+              >
+                <SelectTrigger className="h-10 flex-1 rounded-xl border-stone-200 bg-white/85 lg:w-[150px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {accountTypeOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select
+                value={statusFilter}
+                onValueChange={(value) => {
+                  setStatusFilter(value as AccountStatus | "all");
+                  setPage(1);
+                }}
+              >
+                <SelectTrigger className="h-10 flex-1 rounded-xl border-stone-200 bg-white/85 lg:w-[150px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {accountStatusOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </div>
 
@@ -726,7 +781,7 @@ export default function AccountsPage() {
                           </Badge>
                         </td>
                         <td className="px-4 py-3">
-                          <div className="text-xs leading-5 text-stone-500">{account.email ?? "—"}</div>
+                          <div className="text-xs leading-5 text-stone-900 font-medium">{account.email ?? "—"}</div>
                         </td>
                         <td className="px-4 py-3">
                           <Badge variant="info" className="rounded-md">
@@ -755,6 +810,15 @@ export default function AccountsPage() {
                               disabled={isUpdating}
                             >
                               <Pencil className="size-4" />
+                            </button>
+                            <button
+                              type="button"
+                              className="rounded-lg p-2 transition hover:bg-stone-100 hover:text-stone-700"
+                              onClick={() => void handleRelinkAccount(account.access_token)}
+                              disabled={Boolean(isRelinking) || !account.email || !account.password}
+                              title="重新登录刷新 Token"
+                            >
+                              <Link className={cn("size-4", isRelinking === account.access_token ? "animate-pulse" : "")} />
                             </button>
                             <button
                               type="button"
@@ -796,9 +860,9 @@ export default function AccountsPage() {
             <div className="border-t border-stone-100 px-4 py-4">
               <div className="flex items-center justify-center gap-3 overflow-x-auto whitespace-nowrap">
                 <div className="shrink-0 text-sm text-stone-500">
-                显示第 {filteredAccounts.length === 0 ? 0 : startIndex + 1} -{" "}
-                {Math.min(startIndex + Number(pageSize), filteredAccounts.length)} 条，共{" "}
-                {filteredAccounts.length} 条
+                  显示第 {filteredAccounts.length === 0 ? 0 : startIndex + 1} -{" "}
+                  {Math.min(startIndex + Number(pageSize), filteredAccounts.length)} 条，共{" "}
+                  {filteredAccounts.length} 条
                 </div>
 
                 <span className="shrink-0 text-sm leading-none text-stone-500">

@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Optional
 from contextlib import asynccontextmanager
 from pathlib import Path
 from threading import Event, Thread
-from fastapi import APIRouter, Depends, FastAPI, File, Form, Header, Request, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, FastAPI, File, Form, Header, Request, HTTPException, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -56,11 +56,17 @@ class AccountRefreshRequest(BaseModel):
     access_tokens: list[str] = Field(default_factory=list)
 
 
+class AccountRelinkRequest(BaseModel):
+    access_token: str = Field(default="")
+
+
 class AccountUpdateRequest(BaseModel):
     access_token: str = Field(default="")
     type: str | None = None
     status: str | None = None
     quota: int | None = None
+    email: str | None = None
+    password: str | None = None
 
 
 class ChatCompletionRequest(BaseModel):
@@ -380,7 +386,8 @@ def create_app() -> FastAPI:
         if not tokens:
             raise HTTPException(status_code=400, detail={"error": "令牌不能为空"})
         result = account_service.add_accounts(tokens)
-        refresh_result = account_service.refresh_accounts(tokens)
+        # 使用解析后的纯 token 进行刷新
+        refresh_result = account_service.refresh_accounts(result.get("tokens", tokens))
         return {
             **result,
             "refreshed": refresh_result.get("refreshed", 0),
@@ -424,6 +431,17 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=400, detail={"error": "访问令牌不能为空"})
         return account_service.refresh_accounts(access_tokens)
 
+    @router.post("/api/accounts/relink")
+    async def relink_account(body: AccountRelinkRequest, background_tasks: BackgroundTasks, admin: dict = Depends(get_admin_auth)):
+        access_token = str(body.access_token or "").strip()
+        if not access_token:
+            raise HTTPException(status_code=400, detail={"error": "访问令牌不能为空"})
+        
+        # 将重连任务放入后台执行
+        background_tasks.add_task(account_service.relink_account_background, access_token)
+        
+        return {"message": "重连任务已启动，请在后台稍后刷新查看结果", "status": "processing"}
+
     @router.post("/api/accounts/update")
     async def update_account(body: AccountUpdateRequest, admin: dict = Depends(get_admin_auth)):
         access_token = str(body.access_token or "").strip()
@@ -436,6 +454,8 @@ def create_app() -> FastAPI:
                 "type": body.type,
                 "status": body.status,
                 "quota": body.quota,
+                "email": body.email,
+                "password": body.password,
             }.items()
             if value is not None
         }
@@ -454,7 +474,7 @@ def create_app() -> FastAPI:
             auth: dict = Depends(get_active_auth)
     ):
         if auth["role"] == "user":
-            if not user_service.use_quota(auth["key"]):
+            if not user_service.check_quota(auth["key"]):
                 raise HTTPException(status_code=403, detail={"error": "额度已耗尽"})
 
         base_url = resolve_image_base_url(request)
@@ -462,6 +482,11 @@ def create_app() -> FastAPI:
             result = await run_in_threadpool(
                 chatgpt_service.generate_with_pool, body.prompt, body.model, body.n, body.response_format, base_url
             )
+            
+            # 只有成功后才扣除额度
+            if auth["role"] == "user":
+                user_service.use_quota(auth["key"])
+            
             stats_service.record_success()
             
             # 自动保存到历史 (如果用户已登录)
@@ -493,11 +518,12 @@ def create_app() -> FastAPI:
             auth: dict = Depends(get_active_auth),
     ):
         if auth["role"] == "user":
-            if not user_service.use_quota(auth["key"]):
+            if not user_service.check_quota(auth["key"]):
                 raise HTTPException(status_code=403, detail={"error": "额度已耗尽"})
 
         base_url = resolve_image_base_url(request)
-
+        
+        # ... uploads processing ...
         uploads = (image or []) + (image_list or [])
         if not uploads:
             raise HTTPException(status_code=400, detail={"error": "缺少图片文件"})
@@ -516,6 +542,11 @@ def create_app() -> FastAPI:
             result = await run_in_threadpool(
                 chatgpt_service.edit_with_pool, prompt, images, model, n, response_format, base_url
             )
+            
+            # 只有成功后才扣除额度
+            if auth["role"] == "user":
+                user_service.use_quota(auth["key"])
+                
             stats_service.record_success()
             return result
         except ImageGenerationError as exc:
@@ -525,11 +556,16 @@ def create_app() -> FastAPI:
     @router.post("/v1/chat/completions")
     async def create_chat_completion(body: ChatCompletionRequest, auth: dict = Depends(get_active_auth)):
         if auth["role"] == "user":
-            if not user_service.use_quota(auth["key"]):
+            if not user_service.check_quota(auth["key"]):
                 raise HTTPException(status_code=403, detail={"error": "额度已耗尽"})
         
         try:
             result = await run_in_threadpool(chatgpt_service.create_image_completion, body.model_dump(mode="python"))
+            
+            # 只有成功后才扣除额度
+            if auth["role"] == "user":
+                user_service.use_quota(auth["key"])
+                
             stats_service.record_success()
             return result
         except Exception as exc:

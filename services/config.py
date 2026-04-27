@@ -113,6 +113,20 @@ class ConfigStore:
             return val.strip().rstrip("/")
         return str(self.data.get("base_url") or "").strip().rstrip("/")
 
+    @property
+    def worker_domain(self) -> str:
+        val = os.getenv("WORKER_DOMAIN")
+        if val and val.strip():
+            return val.strip()
+        return str(self.data.get("WORKER_DOMAIN") or "").strip()
+
+    @property
+    def admin_password(self) -> str:
+        val = os.getenv("ADMIN_PASSWORD")
+        if val and val.strip():
+            return val.strip()
+        return str(self.data.get("ADMIN_PASSWORD") or "").strip()
+
     def get(self) -> dict[str, object]:
         return dict(self.data)
 

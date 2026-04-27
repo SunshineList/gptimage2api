@@ -2,5 +2,7 @@
   "auth-key": "your_admin_secret_key_here",
   "base_url": "https://your-domain.com",
   "refresh_account_interval_minute": 5,
-  "proxy": "http://user:pass@host:port"
+  "proxy": "http://user:pass@host:port",
+  "WORKER_DOMAIN": "",
+  "ADMIN_PASSWORD": ""
 }

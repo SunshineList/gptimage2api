@@ -1,23 +1,30 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Copy, LoaderCircle, Plus, Search, Trash2, UserPlus, Users as UsersIcon } from "lucide-react";
+import { Copy, LoaderCircle, Pencil, Plus, Search, Trash2, UserPlus, Users as UsersIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { fetchUsers, createUser, deleteUser, type User } from "@/lib/api";
+import { fetchUsers, createUser, deleteUser, updateUser, type User } from "@/lib/api";
 
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [query, setQuery] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
   const [showAddDialog, setShowAddDialog] = useState(false);
+  const [showEditDialog, setShowEditDialog] = useState(false);
   const [newUserName, setNewUserName] = useState("");
   const [newUserQuota, setNewUserQuota] = useState("-1");
+  
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [editUserName, setEditUserName] = useState("");
+  const [editUserQuota, setEditUserQuota] = useState("-1");
+  const [editUserStatus, setEditUserStatus] = useState<"active" | "disabled">("active");
 
   const copyToClipboard = async (text: string) => {
     try {
@@ -82,6 +89,37 @@ export default function UsersPage() {
     }
   };
 
+  const handleEditUser = (user: User) => {
+    setEditingUser(user);
+    setEditUserName(user.name);
+    setEditUserQuota(user.quota.toString());
+    setEditUserStatus(user.status);
+    setShowEditDialog(true);
+  };
+
+  const handleUpdateUser = async () => {
+    if (!editingUser) return;
+    if (!editUserName.trim()) {
+      toast.error("请输入用户名");
+      return;
+    }
+    setIsUpdating(true);
+    try {
+      await updateUser(editingUser.key, {
+        name: editUserName,
+        quota: Number(editUserQuota),
+        status: editUserStatus,
+      });
+      toast.success("用户信息已更新");
+      setShowEditDialog(false);
+      void loadUsers();
+    } catch (error) {
+      toast.error("更新用户信息失败");
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
   const handleDeleteUser = async (key: string) => {
     if (!confirm("确定要删除该用户吗？")) return;
     try {
@@ -116,6 +154,7 @@ export default function UsersPage() {
         </Button>
       </section>
 
+      {/* 创建对话框 */}
       <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
         <DialogContent className="rounded-2xl p-6">
           <DialogHeader>
@@ -154,9 +193,59 @@ export default function UsersPage() {
         </DialogContent>
       </Dialog>
 
+      {/* 编辑对话框 */}
+      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+        <DialogContent className="rounded-2xl p-6">
+          <DialogHeader>
+            <DialogTitle>编辑用户信息</DialogTitle>
+            <DialogDescription>
+              修改用户的基本信息、额度或状态。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">用户名</label>
+              <Input 
+                placeholder="用户名" 
+                value={editUserName}
+                onChange={e => setEditUserName(e.target.value)}
+                className="rounded-xl border-stone-200"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">额度 (画图次数，-1 为无限制)</label>
+              <Input 
+                type="number"
+                value={editUserQuota}
+                onChange={e => setEditUserQuota(e.target.value)}
+                className="rounded-xl border-stone-200"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">账号状态</label>
+              <select 
+                value={editUserStatus}
+                onChange={e => setEditUserStatus(e.target.value as any)}
+                className="flex h-10 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm ring-offset-white focus:outline-none focus:ring-2 focus:ring-stone-950 focus:ring-offset-2"
+              >
+                <option value="active">正常</option>
+                <option value="disabled">禁用</option>
+              </select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setShowEditDialog(false)} className="rounded-xl">取消</Button>
+            <Button onClick={() => void handleUpdateUser()} disabled={isUpdating} className="rounded-xl bg-stone-950 text-white">
+              {isUpdating && <LoaderCircle className="mr-2 size-4 animate-spin" />}
+              确认修改
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <section className="space-y-4">
         <div className="flex items-center gap-3">
-          <div className="relative flex-1 max-w-sm">
+          <div className="relative w-full sm:max-w-sm">
             <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-stone-400" />
             <Input
               value={query}
@@ -176,22 +265,25 @@ export default function UsersPage() {
                     <th className="px-6 py-4">用户名</th>
                     <th className="px-6 py-4">API Key</th>
                     <th className="px-6 py-4">已用 / 总计</th>
+                    <th className="px-6 py-4">状态</th>
                     <th className="px-6 py-4">创建时间</th>
-                    <th className="px-6 py-4">最后使用</th>
                     <th className="px-6 py-4">操作</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-stone-100">
                   {filteredUsers.map(user => (
                     <tr key={user.key} className="text-sm transition-colors hover:bg-stone-50/50">
-                      <td className="px-6 py-4 font-medium text-stone-900">{user.name}</td>
+                      <td className="px-6 py-4">
+                        <div className="font-medium text-stone-900">{user.name}</div>
+                        <div className="mt-0.5 text-[10px] text-stone-400">{user.last_used_at ? `最后活跃: ${user.last_used_at}` : "尚未活跃"}</div>
+                      </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-2">
                           <code className="rounded bg-stone-100 px-1.5 py-0.5 text-xs text-stone-600">
                             {user.key.slice(0, 8)}...{user.key.slice(-4)}
                           </code>
                           <button 
-                            className="text-stone-400 hover:text-stone-600"
+                            className="text-stone-400 hover:text-stone-600 transition-colors"
                             onClick={() => void copyToClipboard(user.key)}
                           >
                             <Copy className="size-3.5" />
@@ -203,15 +295,29 @@ export default function UsersPage() {
                           {user.used} / {user.quota === -1 ? "∞" : user.quota}
                         </Badge>
                       </td>
-                      <td className="px-6 py-4 text-stone-500">{user.created_at}</td>
-                      <td className="px-6 py-4 text-stone-500">{user.last_used_at || "从未"}</td>
                       <td className="px-6 py-4">
-                        <button 
-                          className="text-stone-400 hover:text-rose-500 transition-colors"
-                          onClick={() => void handleDeleteUser(user.key)}
-                        >
-                          <Trash2 className="size-4" />
-                        </button>
+                        <Badge variant={user.status === "active" ? "outline" : "secondary"} className="rounded-md">
+                          {user.status === "active" ? "正常" : "已禁用"}
+                        </Badge>
+                      </td>
+                      <td className="px-6 py-4 text-stone-500">{user.created_at}</td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          <button 
+                            className="text-stone-400 hover:text-stone-900 transition-colors"
+                            onClick={() => handleEditUser(user)}
+                            title="编辑"
+                          >
+                            <Pencil className="size-4" />
+                          </button>
+                          <button 
+                            className="text-stone-400 hover:text-rose-500 transition-colors"
+                            onClick={() => void handleDeleteUser(user.key)}
+                            title="删除"
+                          >
+                            <Trash2 className="size-4" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
