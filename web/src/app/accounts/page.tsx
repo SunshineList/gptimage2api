@@ -732,14 +732,15 @@ export default function AccountsPage() {
                 </thead>
                 <tbody>
                   {currentRows.map((account) => {
-                    const getStatusMeta = (statusStr: string) => {
-                      if (statusMeta[statusStr as AccountStatus]) return statusMeta[statusStr as AccountStatus];
-                      if (statusStr.startsWith("重连中")) return statusMeta["重连中..."];
-                      if (statusStr.startsWith("重连失败")) return statusMeta["重连失败"];
-                      return statusMeta["异常"];
+                    const getStatusMeta = (statusStr: string | undefined | null) => {
+                      const s = statusStr || "";
+                      if (statusMeta[s as AccountStatus]) return statusMeta[s as AccountStatus];
+                      if (s.startsWith("重连中")) return statusMeta["重连中..."];
+                      if (s.startsWith("重连失败")) return statusMeta["重连失败"];
+                      return statusMeta["异常"] || { icon: CircleOff, badge: "danger" };
                     };
                     const status = getStatusMeta(account.status);
-                    const StatusIcon = status.icon;
+                    const StatusIcon = status?.icon || CircleOff;
 
                     return (
                       <tr

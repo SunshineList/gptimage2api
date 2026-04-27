@@ -440,7 +440,10 @@ class ChatGPTLogin:
                         if at:
                             print(f"      [登录] ✅ accessToken 获取成功!")
                             return at
-                except Exception: pass
+                    else:
+                        print(f"      [登录] Step 8 状态码异常: {resp.status_code}")
+                except Exception as e:
+                    print(f"      [登录] Step 8 网络/解析异常: {e}")
                 time.sleep(3)
             return None
         except Exception as e:
