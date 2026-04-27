@@ -247,9 +247,9 @@ class AccountService:
             {
                 "id": hashlib.sha1(access_token.encode("utf-8")).hexdigest()[:16],
                 "access_token": access_token,
-                "type": account.get("type") or "Free",
-                "status": account.get("status") or "正常",
-                "quota": account.get("quota") if account.get("quota") is not None else 0,
+                "type": self._normalize_account_type(account.get("type")) or "Free",
+                "status": str(account.get("status") or "正常"),
+                "quota": int(account.get("quota") if account.get("quota") is not None else 0),
                 "imageQuotaUnknown": bool(account.get("image_quota_unknown")),
                 "email": account.get("email"),
                 "password": account.get("password"),
@@ -259,7 +259,7 @@ class AccountService:
                 "restoreAt": account.get("restore_at"),
                 "success": int(account.get("success") or 0),
                 "fail": int(account.get("fail") or 0),
-                "lastUsedAt": account.get("last_used_at"),
+                "lastUsedAt": account.get("last_used_at") or None,
             }
             for account in accounts
             if (access_token := self._clean_token(account.get("access_token")))
