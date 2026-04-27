@@ -83,6 +83,8 @@ const statusMeta: Record<
   限流: { icon: CircleAlert, badge: "warning" },
   异常: { icon: CircleOff, badge: "danger" },
   禁用: { icon: Ban, badge: "secondary" },
+  "重连中...": { icon: LoaderCircle, badge: "warning" },
+  "重连失败": { icon: CircleOff, badge: "danger" },
 };
 
 const metricCards = [
@@ -397,7 +399,7 @@ export default function AccountsPage() {
 
     setIsRelinking(accessToken);
     toast.info("正在尝试重新登录并获取新 Token，这可能需要一分钟左右...", { duration: 5000 });
-    
+
     try {
       const data = await relinkAccount(accessToken);
       setAccounts(normalizeAccounts(data.items));
@@ -730,7 +732,13 @@ export default function AccountsPage() {
                 </thead>
                 <tbody>
                   {currentRows.map((account) => {
-                    const status = statusMeta[account.status];
+                    const getStatusMeta = (statusStr: string) => {
+                      if (statusMeta[statusStr as AccountStatus]) return statusMeta[statusStr as AccountStatus];
+                      if (statusStr.startsWith("重连中")) return statusMeta["重连中..."];
+                      if (statusStr.startsWith("重连失败")) return statusMeta["重连失败"];
+                      return statusMeta["异常"];
+                    };
+                    const status = getStatusMeta(account.status);
                     const StatusIcon = status.icon;
 
                     return (

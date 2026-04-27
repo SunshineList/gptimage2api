@@ -1,7 +1,7 @@
 import { httpRequest, request } from "@/lib/request";
 
 export type AccountType = "Free" | "Plus" | "ProLite" | "Pro" | "Team";
-export type AccountStatus = "正常" | "限流" | "异常" | "禁用";
+export type AccountStatus = "正常" | "限流" | "异常" | "禁用" | "重连中..." | "重连失败";
 export type ImageModel = "auto" | "gpt-image-1" | "gpt-image-2";
 
 export type Account = {
