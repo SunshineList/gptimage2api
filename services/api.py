@@ -440,7 +440,12 @@ def create_app() -> FastAPI:
         # 将重连任务放入后台执行
         background_tasks.add_task(account_service.relink_account_background, access_token)
         
-        return {"message": "重连任务已启动，请在后台稍后刷新查看结果", "status": "processing"}
+        # 即使在后台运行，也返回当前列表以维持前端 UI 正常运行
+        return {
+            "message": "重连任务已启动，请稍后刷新查看结果", 
+            "status": "processing",
+            "items": account_service.list_accounts()
+        }
 
     @router.post("/api/accounts/update")
     async def update_account(body: AccountUpdateRequest, admin: dict = Depends(get_admin_auth)):
