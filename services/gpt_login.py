@@ -409,20 +409,19 @@ class ChatGPTLogin:
                     sentinel_otp = build_sentinel_token(session, self.device_id, "email_otp", self.ua, self.sec_ch_ua, proxy=self.proxy)
                     if sentinel_otp: h_otp["openai-sentinel-token"] = sentinel_otp
                     
-                    rv = session.post(f"{self.AUTH}/api/accounts/email-otp/verify", json={"code": new_code}, headers=h_otp)
+                    rv = session.post(f"{self.AUTH}/api/accounts/email-otp/validate", json={"code": new_code}, headers=h_otp)
                     if rv.status_code == 200:
                         continue_url = rv.json().get("continue_url", continue_url)
 
             if continue_url:
                 print(f"      [登录] Step 7: 跟随回调同步 {continue_url}")
                 full_url = continue_url if continue_url.startswith("http") else f"{self.AUTH}{continue_url}"
-                r_sync = session.get(full_url, headers=nav_headers, allow_redirects=True, timeout=30)
-                # print(f"      [登录] 同步结果状态码: {r_sync.status_code}")
+                session.get(full_url, headers=nav_headers, allow_redirects=True)
             
             # --- Step 8: 获取 accessToken (严格复刻) ---
             print(f"      [登录] Step 8: 获取 accessToken")
             time.sleep(3)
-            for i in range(3):
+            for _ in range(3):
                 try:
                     resp = session.get(
                         f"{self.BASE}/api/auth/session",
@@ -436,16 +435,13 @@ class ChatGPTLogin:
                         },
                         timeout=30,
                     )
-                    data = resp.json()
                     if resp.status_code == 200:
-                        at = data.get("accessToken")
+                        at = resp.json().get("accessToken")
                         if at:
                             print(f"      [登录] ✅ accessToken 获取成功!")
                             return at
-                        else:
-                            print(f"      [登录] Step 8 成功但无 Token: {data}")
                     else:
-                        print(f"      [登录] Step 8 状态码异常: {resp.status_code}, 内容: {resp.text[:100]}")
+                        print(f"      [登录] Step 8 状态码异常: {resp.status_code}")
                 except Exception as e:
                     print(f"      [登录] Step 8 网络/解析异常: {e}")
                 time.sleep(3)
