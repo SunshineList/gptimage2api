@@ -84,7 +84,7 @@ export function TopNav() {
         </div>
 
         {/* Desktop Navigation */}
-        <nav className="hidden justify-center gap-6 lg:flex">
+        <nav className="hidden justify-center gap-4 md:flex lg:gap-6">
           {navItems.map((item) => {
             const active = pathname === item.href;
             return (
@@ -109,7 +109,7 @@ export function TopNav() {
           </span>
           <button
             type="button"
-            className="hidden py-2 text-sm text-stone-400 transition hover:text-stone-700 lg:block"
+            className="hidden py-2 text-sm text-stone-400 transition hover:text-stone-700 md:block"
             onClick={() => void handleLogout()}
           >
             退出
@@ -118,7 +118,7 @@ export function TopNav() {
           {/* Mobile Menu Toggle */}
           <button
             type="button"
-            className="flex size-9 items-center justify-center rounded-xl bg-stone-100 text-stone-600 lg:hidden"
+            className="flex size-9 items-center justify-center rounded-xl bg-stone-100 text-stone-600 md:hidden"
             onClick={() => setIsMenuOpen(!isMenuOpen)}
           >
             {isMenuOpen ? <X className="size-5" /> : <Menu className="size-5" />}
@@ -128,8 +128,8 @@ export function TopNav() {
 
       {/* Mobile Navigation Menu */}
       {isMenuOpen && (
-        <div className="fixed inset-0 top-14 z-40 bg-white/95 backdrop-blur-md lg:hidden">
-          <nav className="flex flex-col p-6">
+        <div className="fixed inset-0 top-14 z-40 bg-white/95 backdrop-blur-md md:hidden">
+          <nav className="flex max-h-[calc(100vh-3.5rem)] flex-col overflow-y-auto p-6 pb-12">
             {me?.role === "user" && (
               <div className="mb-6 rounded-2xl bg-stone-50 p-4">
                 <div className="text-xs text-stone-400 uppercase tracking-wider mb-1">我的额度</div>
@@ -146,7 +146,7 @@ export function TopNav() {
                     key={item.href}
                     href={item.href}
                     className={cn(
-                      "flex items-center rounded-xl px-4 py-3 text-[16px] font-medium transition-all",
+                      "flex items-center rounded-xl px-4 py-2.5 text-[15px] font-medium transition-all",
                       active ? "bg-stone-900 text-white" : "text-stone-600 hover:bg-stone-100"
                     )}
                   >
