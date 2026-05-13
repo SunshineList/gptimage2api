@@ -647,7 +647,7 @@ def _download_and_save_image(session: Session, download_url: str, base_url: str 
 
 
 def _resolve_upstream_model(access_token: str, requested_model: str) -> str:
-    requested_model = str(requested_model or "").strip() or "gpt-image-1"
+    requested_model = str(requested_model or "").strip() or "gpt-image-2"
     account = account_service.get_account(access_token) or {}
     is_free_account = str(account.get("type") or "Free").strip() == "Free"
 

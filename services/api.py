@@ -517,7 +517,7 @@ def create_app() -> FastAPI:
             image: list[UploadFile] | None = File(default=None),
             image_list: list[UploadFile] | None = File(default=None, alias="image[]"),
             prompt: str = Form(...),
-            model: str = Form(default="gpt-image-1"),
+            model: str = Form(default="gpt-image-2"),
             n: int = Form(default=1),
             response_format: str = Form(default="b64_json"),
             auth: dict = Depends(get_active_auth),

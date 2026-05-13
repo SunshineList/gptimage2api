@@ -162,7 +162,7 @@ class ChatGPTService:
         if bool(body.get("stream")):
             raise HTTPException(status_code=400, detail={"error": "图片生成不支持流式输出"})
 
-        model = str(body.get("model") or "gpt-image-1").strip() or "gpt-image-1"
+        model = str(body.get("model") or "gpt-image-2").strip() or "gpt-image-2"
         n = parse_image_count(body.get("n"))
         prompt = extract_chat_prompt(body)
         if not prompt:
@@ -199,9 +199,9 @@ class ChatGPTService:
         try:
             if image_info:
                 image_data, mime_type = image_info
-                image_result = self.edit_with_pool(prompt, [(image_data, "image.png", mime_type)], "gpt-image-1", 1)
+                image_result = self.edit_with_pool(prompt, [(image_data, "image.png", mime_type)], "gpt-image-2", 1)
             else:
-                image_result = self.generate_with_pool(prompt, "gpt-image-1", 1)
+                image_result = self.generate_with_pool(prompt, "gpt-image-2", 1)
         except ImageGenerationError as exc:
             raise HTTPException(status_code=502, detail={"error": str(exc)}) from exc
 
