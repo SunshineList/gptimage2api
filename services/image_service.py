@@ -618,10 +618,23 @@ def _fetch_download_url(session: Session, access_token: str, device_id: str, con
     return str((response.json() or {}).get("download_url") or "")
 
 
-def _download_as_base64(session: Session, download_url: str) -> str:
+def _get_download_headers(download_url: str, access_token: str | None, device_id: str | None) -> dict:
+    headers = {
+        "user-agent": USER_AGENT,
+        "accept": "*/*",
+    }
+    if access_token and ("files.oaiusercontent.com" in download_url or "chatgpt.com" in download_url):
+        headers["Authorization"] = f"Bearer {access_token}"
+        if device_id:
+            headers["oai-device-id"] = device_id
+    return headers
+
+
+def _download_as_base64(session: Session, download_url: str, access_token: str | None = None, device_id: str | None = None) -> str:
     response = None
+    headers = _get_download_headers(download_url, access_token, device_id)
     try:
-        response = session.get(download_url, timeout=60)
+        response = session.get(download_url, headers=headers, timeout=60)
         if response.ok and response.content:
             return base64.b64encode(response.content).decode("ascii")
     except Exception as e:
@@ -632,11 +645,7 @@ def _download_as_base64(session: Session, download_url: str) -> str:
             impersonate="chrome110",
             verify=True,
         ))
-        clean_session.headers.update({
-            "user-agent": USER_AGENT,
-            "accept": "*/*",
-        })
-        response = clean_session.get(download_url, timeout=60)
+        response = clean_session.get(download_url, headers=headers, timeout=60)
         if response.ok and response.content:
             return base64.b64encode(response.content).decode("ascii")
     except Exception as e:
@@ -647,11 +656,12 @@ def _download_as_base64(session: Session, download_url: str) -> str:
     raise ImageGenerationError(f"download image failed (status_code={status_code}, err={err_text})")
 
 
-def _download_and_save_image(session: Session, download_url: str, base_url: str | None = None) -> str:
+def _download_and_save_image(session: Session, download_url: str, base_url: str | None = None, access_token: str | None = None, device_id: str | None = None) -> str:
     """下载图片并保存到本地，返回本地 URL"""
     response = None
+    headers = _get_download_headers(download_url, access_token, device_id)
     try:
-        response = session.get(download_url, timeout=60)
+        response = session.get(download_url, headers=headers, timeout=60)
     except Exception as e:
         print(f"[图片下载] 当前 session 下载失败，将使用干净 session 重试: {e}")
 
@@ -661,11 +671,7 @@ def _download_and_save_image(session: Session, download_url: str, base_url: str 
                 impersonate="chrome110",
                 verify=True,
             ))
-            clean_session.headers.update({
-                "user-agent": USER_AGENT,
-                "accept": "*/*",
-            })
-            response = clean_session.get(download_url, timeout=60)
+            response = clean_session.get(download_url, headers=headers, timeout=60)
         except Exception as e:
             print(f"[图片下载] 干净 session 下载失败: {e}")
 
@@ -685,7 +691,7 @@ def _download_and_save_image(session: Session, download_url: str, base_url: str 
     file_path.parent.mkdir(parents=True, exist_ok=True)
     file_path.write_bytes(response.content)
 
-    # 使用传入的 base_url 或配置的 base_url
+    # 使用传入的 base_url 或配置 of base_url
     return f"{(base_url or config.base_url)}/images/{relative_dir.as_posix()}/{filename}"
 
 
@@ -754,9 +760,9 @@ def generate_image_result(access_token: str, prompt: str, model: str = DEFAULT_M
 
         # 根据 response_format 返回不同格式
         if response_format == "url":
-            result_data = {"url": _download_and_save_image(session, download_url, base_url), "revised_prompt": prompt}
+            result_data = {"url": _download_and_save_image(session, download_url, base_url, access_token=access_token, device_id=device_id), "revised_prompt": prompt}
         else:
-            result_data = {"b64_json": _download_as_base64(session, download_url), "revised_prompt": prompt}
+            result_data = {"b64_json": _download_as_base64(session, download_url, access_token=access_token, device_id=device_id), "revised_prompt": prompt}
 
         print(f"[图片上游] 成功 token={access_token[:12]}... 图片数=1 格式={response_format}")
         return {
@@ -892,9 +898,9 @@ def edit_image_result(
 
         # 根据 response_format 返回不同格式
         if response_format == "url":
-            result_data = {"url": _download_and_save_image(session, download_url, base_url), "revised_prompt": prompt}
+            result_data = {"url": _download_and_save_image(session, download_url, base_url, access_token=access_token, device_id=device_id), "revised_prompt": prompt}
         else:
-            result_data = {"b64_json": _download_as_base64(session, download_url), "revised_prompt": prompt}
+            result_data = {"b64_json": _download_as_base64(session, download_url, access_token=access_token, device_id=device_id), "revised_prompt": prompt}
 
         print(f"[图片编辑上游] 成功 token={access_token[:12]}... 输入数={len(uploaded_images)} 格式={response_format}")
         return {
