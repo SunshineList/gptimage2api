@@ -619,17 +619,60 @@ def _fetch_download_url(session: Session, access_token: str, device_id: str, con
 
 
 def _download_as_base64(session: Session, download_url: str) -> str:
-    response = session.get(download_url, timeout=60)
-    if not response.ok or not response.content:
-        raise ImageGenerationError("download image failed")
-    return base64.b64encode(response.content).decode("ascii")
+    response = None
+    try:
+        response = session.get(download_url, timeout=60)
+        if response.ok and response.content:
+            return base64.b64encode(response.content).decode("ascii")
+    except Exception as e:
+        print(f"[图片下载] 当前 session 下载失败，将使用干净 session 重试: {e}")
+
+    try:
+        clean_session = Session(**proxy_settings.build_session_kwargs(
+            impersonate="chrome110",
+            verify=True,
+        ))
+        clean_session.headers.update({
+            "user-agent": USER_AGENT,
+            "accept": "*/*",
+        })
+        response = clean_session.get(download_url, timeout=60)
+        if response.ok and response.content:
+            return base64.b64encode(response.content).decode("ascii")
+    except Exception as e:
+        print(f"[图片下载] 干净 session 下载失败: {e}")
+
+    status_code = response.status_code if response else "NoResponse"
+    err_text = response.text[:200] if response and response.text else "NoContent"
+    raise ImageGenerationError(f"download image failed (status_code={status_code}, err={err_text})")
 
 
 def _download_and_save_image(session: Session, download_url: str, base_url: str | None = None) -> str:
     """下载图片并保存到本地，返回本地 URL"""
-    response = session.get(download_url, timeout=60)
-    if not response.ok or not response.content:
-        raise ImageGenerationError("download image failed")
+    response = None
+    try:
+        response = session.get(download_url, timeout=60)
+    except Exception as e:
+        print(f"[图片下载] 当前 session 下载失败，将使用干净 session 重试: {e}")
+
+    if not response or not response.ok or not response.content:
+        try:
+            clean_session = Session(**proxy_settings.build_session_kwargs(
+                impersonate="chrome110",
+                verify=True,
+            ))
+            clean_session.headers.update({
+                "user-agent": USER_AGENT,
+                "accept": "*/*",
+            })
+            response = clean_session.get(download_url, timeout=60)
+        except Exception as e:
+            print(f"[图片下载] 干净 session 下载失败: {e}")
+
+    if not response or not response.ok or not response.content:
+        status_code = response.status_code if response else "NoResponse"
+        err_text = response.text[:200] if response and response.text else "NoContent"
+        raise ImageGenerationError(f"download image failed (status_code={status_code}, err={err_text})")
 
     # 生成唯一文件名
     file_hash = hashlib.md5(response.content).hexdigest()
@@ -654,7 +697,7 @@ def _resolve_upstream_model(access_token: str, requested_model: str) -> str:
     if requested_model == "gpt-image-1":
         return "auto"
     if requested_model == "gpt-image-2":
-        return "auto" if is_free_account else "gpt-5-3"
+        return "auto" if is_free_account else "gpt-5-5"
     return str(requested_model or DEFAULT_MODEL).strip() or DEFAULT_MODEL
 
 
