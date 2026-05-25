@@ -80,7 +80,7 @@ def build_sentinel_token(
 ) -> Optional[str]:
     """通过 Playwright 浏览器获取 sentinel token"""
     try:
-        from sentinel_browser import get_sentinel_tokens
+        from services.sentinel_browser import get_sentinel_tokens
         res = get_sentinel_tokens(flows=[flow], proxy=proxy, device_id=device_id)
         if res and "flows" in res:
             f_data = res["flows"].get(flow)
