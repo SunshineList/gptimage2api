@@ -118,6 +118,13 @@ export function ImageComposer({
             onClick={() => {
               textareaRef.current?.focus();
             }}
+            onTouchStart={(e) => {
+              // iOS PWA 中 click 代理聚焦可能不触发键盘，用 touchstart 更可靠
+              if (e.target !== textareaRef.current) {
+                e.preventDefault();
+                textareaRef.current?.focus();
+              }
+            }}
           >
             <ImageLightbox
               images={lightboxImages}

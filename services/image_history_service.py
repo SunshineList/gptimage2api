@@ -92,6 +92,9 @@ class ImageHistoryService:
         """管理员分页查询，只返回元数据 + 缩略图（不含原图 base64）"""
         items, total = db.fetch_paginated("images", page, page_size, order_by="created_at DESC")
         for item in items:
+            # 缩略图缺失时尝试从原图重新生成
+            if not item.get("thumbnail_url") and item.get("image_url"):
+                item["thumbnail_url"] = _make_thumbnail(item["image_url"])
             item.pop("image_url", None)
             if not item.get("thumbnail_url"):
                 item["thumbnail_url"] = ""

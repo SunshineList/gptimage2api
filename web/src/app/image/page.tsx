@@ -212,14 +212,24 @@ async function recoverConversationHistory(items: ImageConversation[]) {
         const hasImageIdRef = turn.images.some((img) => img.image_id);
         if (hasImageIdRef) {
           // 有 image_id → 从 hydration 已恢复，标记为 success/error
+          // 没有 image_id 且仍是 loading 的图片是没有被 API 返回的，标记为 error
           const failedCount = turn.images.filter((img) => img.status === "error").length;
           const successCount = turn.images.filter((img) => img.status === "success").length;
+          const orphanLoading = turn.images.filter(
+            (img) => img.status === "loading" && !img.image_id,
+          ).length;
           changed = true;
-          const resolvedStatus: ImageTurnStatus = failedCount > 0 && successCount === 0 ? "error" : "success";
+          const totalFailed = failedCount + orphanLoading;
+          const resolvedStatus: ImageTurnStatus = totalFailed > 0 && successCount === 0 ? "error" : "success";
           return {
             ...turn,
             status: resolvedStatus,
-            error: failedCount > 0 ? `其中 ${failedCount} 张未成功生成` : undefined,
+            error: totalFailed > 0 ? `其中 ${totalFailed} 张未成功生成` : undefined,
+            images: turn.images.map((img) =>
+              img.status === "loading" && !img.image_id
+                ? { ...img, status: "error" as const, error: "任务中断" }
+                : img,
+            ),
           };
         }
         // 非活跃且无 image_id → 标记为失败（API 真没跑完）
@@ -610,7 +620,7 @@ export default function ImagePage() {
               : turn,
           ),
         };
-      });
+      }, { persist: false });
 
       try {
         const referenceFiles = queuedTurn.referenceImages.map((image, index) =>
@@ -651,6 +661,37 @@ export default function ImagePage() {
             : await generateImage(queuedTurn.prompt, undefined, pendingImages.length);
 
         const results = data.data || [];
+
+        // 立即持久化 image_id，确保页面刷新后可通过 images 表恢复
+        const imageIdByPendingId = new Map<string, string>();
+        for (let i = 0; i < pendingImages.length; i++) {
+          const result = results[i];
+          if (result?.image_id) {
+            imageIdByPendingId.set(pendingImages[i].id, result.image_id);
+          }
+        }
+        if (imageIdByPendingId.size > 0) {
+          await updateConversation(conversationId, (current) => {
+            const conversation = current ?? snapshot;
+            return {
+              ...conversation,
+              updatedAt: new Date().toISOString(),
+              turns: conversation.turns.map((turn) =>
+                turn.id === queuedTurn.id
+                  ? {
+                      ...turn,
+                      images: turn.images.map((image) =>
+                        imageIdByPendingId.has(image.id)
+                          ? { ...image, image_id: imageIdByPendingId.get(image.id) }
+                          : image,
+                      ),
+                    }
+                  : turn,
+              ),
+            };
+          });
+        }
+
         let successCount = 0;
         let failedCount = 0;
 

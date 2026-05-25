@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { fetchUsers, createUser, deleteUser, updateUser, type User } from "@/lib/api";
+import { fetchUsers, createUser, deleteUser, updateUser, type User, type UserRole } from "@/lib/api";
 
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
@@ -21,14 +21,14 @@ export default function UsersPage() {
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [newUserName, setNewUserName] = useState("");
   const [newUserKey, setNewUserKey] = useState("");
-  const [newUserRole, setNewUserRole] = useState("user");
+  const [newUserRole, setNewUserRole] = useState<UserRole>("user");
   const [newUserQuota, setNewUserQuota] = useState("-1");
 
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [editUserName, setEditUserName] = useState("");
   const [editUserQuota, setEditUserQuota] = useState("-1");
   const [editUserStatus, setEditUserStatus] = useState<"active" | "disabled">("active");
-  const [editUserRole, setEditUserRole] = useState("user");
+  const [editUserRole, setEditUserRole] = useState<UserRole>("user");
 
   const copyToClipboard = async (text: string) => {
     try {
@@ -195,7 +195,7 @@ export default function UsersPage() {
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">角色</label>
-              <Select value={newUserRole} onValueChange={setNewUserRole}>
+              <Select value={newUserRole} onValueChange={(v) => setNewUserRole(v as UserRole)}>
                 <SelectTrigger className="h-10 w-full rounded-xl border-border">
                   <SelectValue />
                 </SelectTrigger>
@@ -256,7 +256,7 @@ export default function UsersPage() {
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">角色</label>
-              <Select value={editUserRole} onValueChange={setEditUserRole}>
+              <Select value={editUserRole} onValueChange={(v) => setEditUserRole(v as UserRole)}>
                 <SelectTrigger className="h-10 w-full rounded-xl border-border">
                   <SelectValue />
                 </SelectTrigger>
