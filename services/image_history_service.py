@@ -40,4 +40,11 @@ class ImageHistoryService:
         """管理员分页查询所有用户的图片，返回 (items, total)"""
         return db.fetch_paginated("images", page, page_size, order_by="created_at DESC")
 
+    def list_all_images_meta(self, page: int, page_size: int) -> tuple:
+        """管理员分页查询，只返回元数据（不含 base64 图片，速度快）"""
+        items, total = db.fetch_paginated("images", page, page_size, order_by="created_at DESC")
+        for item in items:
+            item.pop("image_url", None)
+        return items, total
+
 image_history_service = ImageHistoryService()

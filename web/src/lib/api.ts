@@ -529,3 +529,7 @@ export type AdminImagesResponse = {
 export async function fetchAdminImages(page = 1, pageSize = 20) {
   return httpRequest<AdminImagesResponse>(`/api/admin/images?page=${page}&page_size=${pageSize}`);
 }
+
+export async function fetchAdminImage(id: string) {
+  return httpRequest<{ item: ImageHistory }>(`/api/admin/images/${id}`);
+}

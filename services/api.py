@@ -630,7 +630,7 @@ def create_app() -> FastAPI:
     ):
         page = max(1, page)
         page_size = max(1, min(100, page_size))
-        items, total = image_history_service.list_all_images_paginated(page, page_size)
+        items, total = image_history_service.list_all_images_meta(page, page_size)
         total_pages = max(1, (total + page_size - 1) // page_size)
         return {
             "items": items,
@@ -639,6 +639,13 @@ def create_app() -> FastAPI:
             "page_size": page_size,
             "total_pages": total_pages,
         }
+
+    @router.get("/api/admin/images/{image_id}")
+    async def get_admin_image(image_id: str, admin: dict = Depends(get_admin_auth)):
+        image = image_history_service.get_image(image_id)
+        if not image:
+            raise HTTPException(status_code=404, detail={"error": "图片不存在"})
+        return {"item": image}
 
     @router.delete("/api/images/history/{image_id}")
     async def delete_image_history(image_id: str, auth: dict = Depends(get_active_auth)):
