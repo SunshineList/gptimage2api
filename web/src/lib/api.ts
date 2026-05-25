@@ -556,3 +556,9 @@ export async function fetchAdminImages(page = 1, pageSize = 20) {
 export async function fetchAdminImage(id: string) {
   return httpRequest<{ item: ImageHistory }>(`/api/admin/images/${id}`);
 }
+
+export async function deleteAdminImage(id: string) {
+  return httpRequest<{ ok: boolean }>(`/api/admin/images/${id}`, {
+    method: "DELETE",
+  });
+}

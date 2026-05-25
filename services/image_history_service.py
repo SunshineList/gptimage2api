@@ -67,6 +67,15 @@ class ImageHistoryService:
     def get_image(self, image_id: str) -> Optional[Dict[str, Any]]:
         return db.load_one_data("images", "id", image_id)
 
+    def delete_image_admin(self, image_id: str) -> bool:
+        """管理员删除任意图片"""
+        image = db.load_one_data("images", "id", image_id)
+        if not image:
+            return False
+        db.delete_data("images", "id", image_id)
+        db.delete_data("plaza", "image_id", image_id)
+        return True
+
     def list_all_images_paginated(self, page: int, page_size: int) -> tuple:
         """管理员分页查询所有用户的图片，返回 (items, total)"""
         return db.fetch_paginated("images", page, page_size, order_by="created_at DESC")

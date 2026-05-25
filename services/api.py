@@ -697,6 +697,12 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=404, detail={"error": "图片不存在"})
         return {"item": image}
 
+    @router.delete("/api/admin/images/{image_id}")
+    async def delete_admin_image(image_id: str, admin: dict = Depends(get_admin_auth)):
+        if image_history_service.delete_image_admin(image_id):
+            return {"ok": True}
+        raise HTTPException(status_code=404, detail={"error": "图片不存在"})
+
     @router.post("/api/images/batch")
     async def get_images_batch(body: dict, auth: dict = Depends(get_active_auth)):
         ids = body.get("ids", [])

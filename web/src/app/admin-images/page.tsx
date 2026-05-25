@@ -2,12 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { LoaderCircle, Download, ImageIcon, User } from "lucide-react";
+import { LoaderCircle, Download, ImageIcon, Trash2, User } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ImageLightbox } from "@/components/image-lightbox";
-import { fetchAdminImages, fetchAdminImage, type ImageHistory } from "@/lib/api";
+import { fetchAdminImages, fetchAdminImage, deleteAdminImage, type ImageHistory } from "@/lib/api";
 
 const PAGE_SIZE = 20;
 
@@ -77,6 +77,18 @@ export default function AdminImagesPage() {
     observer.observe(sentinel);
     return () => observer.disconnect();
   }, [page, totalPages, isLoadingMore, loadPage]);
+
+  const handleDelete = async (id: string) => {
+    if (!confirm("确定删除该图片吗？此操作不可撤销。")) return;
+    try {
+      await deleteAdminImage(id);
+      toast.success("图片已删除");
+      loadedFullSrcRef.current.delete(id);
+      setImages((prev) => prev.filter((img) => img.id !== id));
+    } catch {
+      toast.error("删除图片失败");
+    }
+  };
 
   const openLightbox = (index: number) => {
     // 先构建 lightbox 列表（先用缩略图占位）
@@ -285,6 +297,14 @@ export default function AdminImagesPage() {
                           aria-label="下载"
                         >
                           <Download className="size-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          className="inline-flex size-7 items-center justify-center rounded-lg bg-secondary text-muted-foreground transition hover:bg-rose-100 hover:text-rose-500"
+                          onClick={() => void handleDelete(meta.id)}
+                          aria-label="删除"
+                        >
+                          <Trash2 className="size-3.5" />
                         </button>
                       </div>
                     </div>

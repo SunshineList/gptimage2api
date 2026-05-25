@@ -323,6 +323,7 @@ async function recoverConversationHistory(items: ImageConversation[]) {
 export default function ImagePage() {
   const router = useRouter();
   const didLoadQuotaRef = useRef(false);
+  const isSubmittingRef = useRef(false);
   const conversationsRef = useRef<ImageConversation[]>([]);
   const resultsViewportRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -645,8 +646,11 @@ export default function ImagePage() {
       }
 
       const snapshot = conversationsRef.current.find((conversation) => conversation.id === conversationId);
-      const queuedTurn = snapshot?.turns.find((turn) => turn.status === "queued");
-      if (!snapshot || !queuedTurn) {
+      // 找到第一个需要处理的 turn：status 为 generating 且有 loading 图片待生成
+      const pendingTurn = snapshot?.turns.find(
+        (turn) => turn.status === "generating" && turn.images.some((img) => img.status === "loading" && !img.image_id),
+      );
+      if (!snapshot || !pendingTurn) {
         return;
       }
 
@@ -654,47 +658,30 @@ export default function ImagePage() {
       // 记录活跃轮次到 sessionStorage，用于页面重载时判断 zombie 是否存活
       try {
         const active = JSON.parse(window.sessionStorage.getItem(ACTIVE_TURNS_SESSION_KEY) || "[]") as string[];
-        active.push(queuedTurn.id);
+        active.push(pendingTurn.id);
         window.sessionStorage.setItem(ACTIVE_TURNS_SESSION_KEY, JSON.stringify(active));
       } catch { /* ignore */ }
 
-      await updateConversation(conversationId, (current) => {
-        const conversation = current ?? snapshot;
-        return {
-          ...conversation,
-          updatedAt: new Date().toISOString(),
-          turns: conversation.turns.map((turn) =>
-            turn.id === queuedTurn.id
-              ? {
-                ...turn,
-                status: "generating",
-                error: undefined,
-              }
-              : turn,
-          ),
-        };
-      });
-
       try {
-        const referenceFiles = queuedTurn.referenceImages.map((image, index) =>
-          dataUrlToFile(image.dataUrl, image.name || `${queuedTurn.id}-${index + 1}.png`, image.type),
+        const referenceFiles = pendingTurn.referenceImages.map((image, index) =>
+          dataUrlToFile(image.dataUrl, image.name || `${pendingTurn.id}-${index + 1}.png`, image.type),
         );
-        const pendingImages = queuedTurn.images.filter((image) => image.status === "loading");
+        const pendingImages = pendingTurn.images.filter((image) => image.status === "loading");
 
-        if (queuedTurn.mode === "edit" && referenceFiles.length === 0) {
+        if (pendingTurn.mode === "edit" && referenceFiles.length === 0) {
           throw new Error("未找到可用于继续编辑的参考图");
         }
 
         if (pendingImages.length === 0) {
-          const existingFailedCount = queuedTurn.images.filter((image) => image.status === "error").length;
-          const existingSuccessCount = queuedTurn.images.filter((image) => image.status === "success").length;
+          const existingFailedCount = pendingTurn.images.filter((image) => image.status === "error").length;
+          const existingSuccessCount = pendingTurn.images.filter((image) => image.status === "success").length;
           await updateConversation(conversationId, (current) => {
             const conversation = current ?? snapshot;
             return {
               ...conversation,
               updatedAt: new Date().toISOString(),
               turns: conversation.turns.map((turn) =>
-                turn.id === queuedTurn.id
+                turn.id === pendingTurn.id
                   ? {
                     ...turn,
                     status: existingFailedCount > 0 ? "error" : existingSuccessCount > 0 ? "success" : "queued",
@@ -709,9 +696,9 @@ export default function ImagePage() {
 
         // 单次 API 调用生成所有图片，避免离开页面后中断
         const data =
-          queuedTurn.mode === "edit"
-            ? await editImage(referenceFiles, queuedTurn.prompt, undefined, pendingImages.length)
-            : await generateImage(queuedTurn.prompt, undefined, pendingImages.length);
+          pendingTurn.mode === "edit"
+            ? await editImage(referenceFiles, pendingTurn.prompt, undefined, pendingImages.length)
+            : await generateImage(pendingTurn.prompt, undefined, pendingImages.length);
 
         const results = data.data || [];
 
@@ -730,7 +717,7 @@ export default function ImagePage() {
               ...conversation,
               updatedAt: new Date().toISOString(),
               turns: conversation.turns.map((turn) =>
-                turn.id === queuedTurn.id
+                turn.id === pendingTurn.id
                   ? {
                       ...turn,
                       images: turn.images.map((image) =>
@@ -767,7 +754,7 @@ export default function ImagePage() {
                   ...conversation,
                   updatedAt: new Date().toISOString(),
                   turns: conversation.turns.map((turn) =>
-                    turn.id === queuedTurn.id
+                    turn.id === pendingTurn.id
                       ? {
                         ...turn,
                         images: turn.images.map((image) => (image.id === nextImage.id ? nextImage : image)),
@@ -792,7 +779,7 @@ export default function ImagePage() {
                   ...conversation,
                   updatedAt: new Date().toISOString(),
                   turns: conversation.turns.map((turn) =>
-                    turn.id === queuedTurn.id
+                    turn.id === pendingTurn.id
                       ? {
                         ...turn,
                         images: turn.images.map((image) => (image.id === failedImage.id ? failedImage : image)),
@@ -806,8 +793,8 @@ export default function ImagePage() {
           }
         }
 
-        const existingSuccessCount = queuedTurn.images.filter((image) => image.status === "success").length;
-        const existingFailedCount = queuedTurn.images.filter((image) => image.status === "error").length;
+        const existingSuccessCount = pendingTurn.images.filter((image) => image.status === "success").length;
+        const existingFailedCount = pendingTurn.images.filter((image) => image.status === "error").length;
         const totalSuccess = existingSuccessCount + successCount;
         const totalFailed = existingFailedCount + failedCount;
 
@@ -817,7 +804,7 @@ export default function ImagePage() {
             ...conversation,
             updatedAt: new Date().toISOString(),
             turns: conversation.turns.map((turn) =>
-              turn.id === queuedTurn.id
+              turn.id === pendingTurn.id
                 ? {
                   ...turn,
                   status: totalFailed > 0 && totalSuccess === 0 ? "error" : "success",
@@ -837,7 +824,7 @@ export default function ImagePage() {
             ...conversation,
             updatedAt: new Date().toISOString(),
             turns: conversation.turns.map((turn) =>
-              turn.id === queuedTurn.id
+              turn.id === pendingTurn.id
                 ? {
                   ...turn,
                   status: "error",
@@ -857,7 +844,7 @@ export default function ImagePage() {
         try {
           const raw = window.sessionStorage.getItem(ACTIVE_TURNS_SESSION_KEY);
           const active = raw ? (JSON.parse(raw) as string[]) : [];
-          const filtered = active.filter((id) => id !== queuedTurn.id);
+          const filtered = active.filter((id) => id !== pendingTurn.id);
           if (filtered.length > 0) {
             window.sessionStorage.setItem(ACTIVE_TURNS_SESSION_KEY, JSON.stringify(filtered));
           } else {
@@ -868,7 +855,9 @@ export default function ImagePage() {
         for (const conversation of conversationsRef.current) {
           if (
             !activeConversationQueueIds.has(conversation.id) &&
-            conversation.turns.some((turn) => turn.status === "queued")
+            conversation.turns.some(
+              (turn) => turn.status === "generating" && turn.images.some((img) => img.status === "loading" && !img.image_id),
+            )
           ) {
             void runConversationQueue(conversation.id);
           }
@@ -882,7 +871,9 @@ export default function ImagePage() {
     for (const conversation of conversations) {
       if (
         !activeConversationQueueIds.has(conversation.id) &&
-        conversation.turns.some((turn) => turn.status === "queued")
+        conversation.turns.some(
+          (turn) => turn.status === "generating" && turn.images.some((img) => img.status === "loading" && !img.image_id),
+        )
       ) {
         void runConversationQueue(conversation.id);
       }
@@ -890,6 +881,7 @@ export default function ImagePage() {
   }, [conversations, runConversationQueue]);
 
   const handleSubmit = async () => {
+    if (isSubmittingRef.current) return;
     const prompt = imagePrompt.trim();
     if (!prompt) {
       toast.error("请输入提示词");
@@ -901,6 +893,9 @@ export default function ImagePage() {
       return;
     }
 
+    isSubmittingRef.current = true;
+
+    try {
     const targetConversation = selectedConversationId
       ? conversationsRef.current.find((conversation) => conversation.id === selectedConversationId) ?? null
       : null;
@@ -919,7 +914,7 @@ export default function ImagePage() {
         status: "loading" as const,
       })),
       createdAt: now,
-      status: "queued",
+      status: "generating",
     };
 
     const baseConversation: ImageConversation = targetConversation
@@ -949,6 +944,9 @@ export default function ImagePage() {
       toast.success("已创建新对话并开始处理");
     } else {
       toast.success("已发送到当前对话");
+    }
+    } finally {
+      isSubmittingRef.current = false;
     }
   };
 

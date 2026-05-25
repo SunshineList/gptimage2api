@@ -235,7 +235,7 @@ export function getImageConversationStats(conversation: ImageConversation | null
     (acc, turn) => {
       if (turn.status === "queued") {
         acc.queued += 1;
-      } else if (turn.status === "generating") {
+      } else if (turn.status === "generating" && turn.images.some((img) => img.status === "loading")) {
         acc.running += 1;
       }
       return acc;
