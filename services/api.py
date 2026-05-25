@@ -708,6 +708,15 @@ def create_app() -> FastAPI:
         items = image_history_service.get_images_batch(ids, user_key)
         return {"items": items}
 
+    @router.post("/api/images/match-orphans")
+    async def match_orphan_images(body: dict, auth: dict = Depends(get_active_auth)):
+        """根据 prompt + 时间范围查找孤立的生成结果，用于页面刷新后恢复未关联的图片"""
+        queries = body.get("queries", [])
+        if not isinstance(queries, list) or not queries:
+            return {"matches": []}
+        matches = image_history_service.find_recent_images_by_prompt(auth["key"], queries[:50])
+        return {"matches": matches}
+
     @router.delete("/api/images/history/{image_id}")
     async def delete_image_history(image_id: str, auth: dict = Depends(get_active_auth)):
         if image_history_service.delete_image(image_id, auth["key"]):

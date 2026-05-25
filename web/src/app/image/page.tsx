@@ -20,6 +20,7 @@ import {
   deleteConversation as apiDeleteConversation,
   clearConversations as apiClearConversations,
   fetchImagesBatch,
+  matchOrphanImages,
 } from "@/lib/api";
 import { getStoredAuthKey } from "@/store/auth";
 import {
@@ -179,8 +180,65 @@ async function recoverConversationHistory(items: ImageConversation[]) {
     }
   })();
 
-  // 单次批量请求从后端 images 表恢复 b64_json
-  const hydrated = await hydrateConversations(items);
+  // 第一步：尝试为没有 image_id 的 generating turn 匹配孤立的图片
+  let resolvedItems = items;
+  const orphanQueries: { turnKey: string; prompt: string; after_time: string }[] = [];
+  for (const conv of resolvedItems) {
+    for (const turn of conv.turns) {
+      if (turn.status !== "generating") continue;
+      if (activeTurnIds.includes(turn.id)) continue;
+      if (turn.images.some((img) => img.image_id)) continue;
+      // 只有 loading 图片数匹配的才尝试（避免已将部分标为 error 的情况重复匹配）
+      const loadingCount = turn.images.filter((img) => img.status === "loading").length;
+      if (loadingCount === 0) continue;
+      orphanQueries.push({
+        turnKey: `${conv.id}::${turn.id}`,
+        prompt: turn.prompt,
+        after_time: turn.createdAt,
+      });
+    }
+  }
+
+  if (orphanQueries.length > 0) {
+    try {
+      const { matches } = await matchOrphanImages(
+        orphanQueries.map((q) => ({ prompt: q.prompt, after_time: q.after_time })),
+      );
+      if (matches.length > 0) {
+        // 按 prompt 分组
+        const idsByPrompt = new Map<string, string[]>();
+        for (const m of matches) {
+          const existing = idsByPrompt.get(m.prompt) || [];
+          existing.push(m.image_id);
+          idsByPrompt.set(m.prompt, existing);
+        }
+        // 将匹配到的 image_id 分配给对应的 turn
+        resolvedItems = resolvedItems.map((conv) => ({
+          ...conv,
+          turns: conv.turns.map((turn) => {
+            const key = `${conv.id}::${turn.id}`;
+            const query = orphanQueries.find((q) => q.turnKey === key);
+            if (!query) return turn;
+            const ids = idsByPrompt.get(query.prompt) || [];
+            if (ids.length === 0) return turn;
+            let assigned = 0;
+            return {
+              ...turn,
+              images: turn.images.map((img) => {
+                if (img.image_id || img.status !== "loading") return img;
+                const matchedId = ids[assigned % ids.length];
+                assigned++;
+                return matchedId ? { ...img, image_id: matchedId } : img;
+              }),
+            };
+          }),
+        }));
+      }
+    } catch { /* 孤儿匹配失败不阻塞恢复 */ }
+  }
+
+  // 第二步：单次批量请求从后端 images 表恢复 b64_json
+  const hydrated = await hydrateConversations(resolvedItems);
 
   const normalized = hydrated.map((conversation) => {
     let changed = false;
@@ -205,14 +263,10 @@ async function recoverConversationHistory(items: ImageConversation[]) {
       // 有 loading 状态的图片
       if (turn.status === "generating") {
         if (activeTurnIds.includes(turn.id)) {
-          // sessionStorage 有记录 → zombie 可能还活着，保留原样
           return turn;
         }
-        // 检查是否有 image_id 引用（说明 API 已返回并保存到 images 表）
         const hasImageIdRef = turn.images.some((img) => img.image_id);
         if (hasImageIdRef) {
-          // 有 image_id → 从 hydration 已恢复，标记为 success/error
-          // 没有 image_id 且仍是 loading 的图片是没有被 API 返回的，标记为 error
           const failedCount = turn.images.filter((img) => img.status === "error").length;
           const successCount = turn.images.filter((img) => img.status === "success").length;
           const orphanLoading = turn.images.filter(
@@ -232,7 +286,7 @@ async function recoverConversationHistory(items: ImageConversation[]) {
             ),
           };
         }
-        // 非活跃且无 image_id → 标记为失败（API 真没跑完）
+        // 非活跃且无 image_id，孤儿匹配也未找到 → 标记为失败
         changed = true;
         return {
           ...turn,
@@ -244,7 +298,6 @@ async function recoverConversationHistory(items: ImageConversation[]) {
         };
       }
 
-      // queued 状态：保持不变，队列会自动处理
       return turn;
     });
 
@@ -257,7 +310,7 @@ async function recoverConversationHistory(items: ImageConversation[]) {
     };
   });
 
-  const changedConversations = normalized.filter((conv, index) => conv !== items[index]);
+  const changedConversations = normalized.filter((conv, index) => conv !== resolvedItems[index]);
   if (changedConversations.length > 0) {
     for (const conv of changedConversations) {
       await apiSaveConversation(stripB64ForServerSync(conv));
@@ -620,7 +673,7 @@ export default function ImagePage() {
               : turn,
           ),
         };
-      }, { persist: false });
+      });
 
       try {
         const referenceFiles = queuedTurn.referenceImages.map((image, index) =>

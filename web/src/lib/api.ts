@@ -415,6 +415,16 @@ export async function fetchImagesBatch(ids: string[]) {
   });
 }
 
+export async function matchOrphanImages(queries: { prompt: string; after_time: string }[]) {
+  return httpRequest<{ matches: Array<{ prompt: string; image_id: string; image_url: string }> }>(
+    "/api/images/match-orphans",
+    {
+      method: "POST",
+      body: { queries },
+    },
+  );
+}
+
 // ── Statistics ───────────────────────────────────────────────────
 
 export type Stats = {

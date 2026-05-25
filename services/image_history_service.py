@@ -88,6 +88,34 @@ class ImageHistoryService:
             )
         return [json.loads(row["data"]) for row in rows]
 
+    def find_recent_images_by_prompt(
+        self, user_key: str, queries: list[dict]
+    ) -> list[dict]:
+        """根据 prompt 和时间查找最近生成的图片，用于恢复孤立的生成结果。
+        每个 query: {prompt, after_time}. 返回: [{prompt, image_id, image_url?, thumbnail_url?}]"""
+        if not queries:
+            return []
+        results = []
+        for q in queries:
+            prompt = q.get("prompt", "")
+            after_time = q.get("after_time", "")
+            if not prompt:
+                continue
+            rows = db.fetch_all(
+                "SELECT data FROM images WHERE user_key = ? AND json_extract(data, '$.prompt') = ? "
+                "AND json_extract(data, '$.created_at') >= ? "
+                "ORDER BY json_extract(data, '$.created_at') ASC LIMIT 10",
+                (user_key, prompt, after_time),
+            )
+            for row in rows:
+                img = json.loads(row["data"])
+                results.append({
+                    "prompt": prompt,
+                    "image_id": img["id"],
+                    "image_url": img.get("image_url", ""),
+                })
+        return results
+
     def list_all_images_meta(self, page: int, page_size: int) -> tuple:
         """管理员分页查询，只返回元数据 + 缩略图（不含原图 base64）"""
         items, total = db.fetch_paginated("images", page, page_size, order_by="created_at DESC")
