@@ -96,6 +96,19 @@ class Database:
                     CREATE INDEX IF NOT EXISTS idx_conversations_user_updated
                     ON conversations(user_key, updated_at DESC)
                 """)
+                # 生成任务跟踪表
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS generation_tasks (
+                        id TEXT PRIMARY KEY,
+                        user_key TEXT NOT NULL,
+                        data TEXT NOT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                conn.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_generation_tasks_user_created
+                    ON generation_tasks(user_key, created_at DESC)
+                """)
                 conn.commit()
             finally:
                 conn.close()

@@ -30,6 +30,7 @@ from services.stats_service import stats_service
 from services.image_history_service import image_history_service
 from services.plaza_service import plaza_service
 from services.conversation_service import conversation_service
+from services.task_service import task_service
 import base64
 import secrets
 
@@ -43,6 +44,7 @@ class ImageGenerationRequest(BaseModel):
     n: int = Field(default=1, ge=1, le=4)
     response_format: str = "b64_json"
     history_disabled: bool = True
+    task_id: str | None = None
 
 
 class AccountCreateRequest(BaseModel):
@@ -503,19 +505,25 @@ def create_app() -> FastAPI:
                 raise HTTPException(status_code=403, detail={"error": "额度已耗尽"})
 
         base_url = resolve_image_base_url(request)
+
+        task_id = body.task_id or ""
+        if task_id:
+            task_service.create_task(task_id, auth["key"], body.prompt, body.model)
+
         try:
             result = await run_in_threadpool(
                 chatgpt_service.generate_with_pool, body.prompt, body.model, body.n, body.response_format, base_url
             )
-            
+
             # 只有成功后才扣除额度
             if auth["role"] == "user":
                 user_service.use_quota(auth["key"])
-            
+
             stats_service.record_success()
 
             # 自动保存到历史（所有已认证用户，含管理员）
             image_data = result.get("data", [])
+            saved_image_ids: list[str] = []
             for item in image_data:
                 if isinstance(item, dict) and item.get("b64_json"):
                     image_id = image_history_service.save_image(
@@ -526,9 +534,16 @@ def create_app() -> FastAPI:
                         type="generate",
                     )
                     item["image_id"] = image_id
+                    saved_image_ids.append(image_id)
 
+            if task_id:
+                task_service.complete_task(task_id, saved_image_ids)
+
+            result["task_id"] = task_id
             return result
         except ImageGenerationError as exc:
+            if task_id:
+                task_service.fail_task(task_id, str(exc))
             stats_service.record_fail()
             raise HTTPException(status_code=502, detail={"error": str(exc)}) from exc
 
@@ -541,6 +556,7 @@ def create_app() -> FastAPI:
             model: str = Form(default="gpt-image-2"),
             n: int = Form(default=1),
             response_format: str = Form(default="b64_json"),
+            task_id: str = Form(default=""),
             auth: dict = Depends(get_active_auth),
     ):
         if auth["role"] == "user":
@@ -548,7 +564,7 @@ def create_app() -> FastAPI:
                 raise HTTPException(status_code=403, detail={"error": "额度已耗尽"})
 
         base_url = resolve_image_base_url(request)
-        
+
         # ... uploads processing ...
         uploads = (image or []) + (image_list or [])
         if not uploads:
@@ -567,11 +583,14 @@ def create_app() -> FastAPI:
             ref_b64 = base64.b64encode(image_data).decode("utf-8")
             reference_data_urls.append(f"data:{mime_type};base64,{ref_b64}")
 
+        if task_id:
+            task_service.create_task(task_id, auth["key"], prompt, model)
+
         try:
             result = await run_in_threadpool(
                 chatgpt_service.edit_with_pool, prompt, images, model, n, response_format, base_url
             )
-            
+
             # 只有成功后才扣除额度
             if auth["role"] == "user":
                 user_service.use_quota(auth["key"])
@@ -580,6 +599,7 @@ def create_app() -> FastAPI:
 
             # 自动保存编辑结果到历史（含参考图）
             image_data = result.get("data", [])
+            saved_image_ids: list[str] = []
             for item in image_data:
                 if isinstance(item, dict) and item.get("b64_json"):
                     image_id = image_history_service.save_image(
@@ -591,9 +611,16 @@ def create_app() -> FastAPI:
                         reference_image_urls=reference_data_urls,
                     )
                     item["image_id"] = image_id
+                    saved_image_ids.append(image_id)
 
+            if task_id:
+                task_service.complete_task(task_id, saved_image_ids)
+
+            result["task_id"] = task_id
             return result
         except ImageGenerationError as exc:
+            if task_id:
+                task_service.fail_task(task_id, str(exc))
             stats_service.record_fail()
             raise HTTPException(status_code=502, detail={"error": str(exc)}) from exc
 
@@ -722,6 +749,24 @@ def create_app() -> FastAPI:
             return {"matches": []}
         matches = image_history_service.find_recent_images_by_prompt(auth["key"], queries[:50])
         return {"matches": matches}
+
+    @router.get("/api/images/tasks/{task_id}")
+    async def get_task(task_id: str, auth: dict = Depends(get_active_auth)):
+        task = task_service.get_task(task_id)
+        if not task:
+            raise HTTPException(status_code=404, detail={"error": "任务不存在"})
+        if auth["role"] != "admin" and task.get("user_key") != auth["key"]:
+            raise HTTPException(status_code=404, detail={"error": "任务不存在"})
+        return {"task": task}
+
+    @router.post("/api/images/tasks/lookup")
+    async def lookup_tasks(body: dict, auth: dict = Depends(get_active_auth)):
+        """按 prompt + 时间范围查找任务，用于前端不知道 task_id 时的兜底恢复"""
+        queries = body.get("queries", [])
+        if not isinstance(queries, list) or not queries:
+            return {"results": []}
+        results = task_service.find_by_prompt(auth["key"], queries[:50])
+        return {"results": results}
 
     @router.delete("/api/images/history/{image_id}")
     async def delete_image_history(image_id: str, auth: dict = Depends(get_active_auth)):

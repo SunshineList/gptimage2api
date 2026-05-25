@@ -21,6 +21,8 @@ import {
   clearConversations as apiClearConversations,
   fetchImagesBatch,
   matchOrphanImages,
+  getTask,
+  lookupTasks,
 } from "@/lib/api";
 import { getStoredAuthKey } from "@/store/auth";
 import {
@@ -251,7 +253,115 @@ async function recoverConversationHistory(
     } catch { /* 孤儿匹配失败不阻塞恢复 */ }
   }
 
-  // 第二步：批量请求从后端 images 表恢复 b64_json（仅恢复指定会话）
+  // 第二步：通过 task_id 查询任务状态（优先），兜底用 lookupTasks
+  {
+    // 收集有 task_id 的 generating turn
+    const taskQueries: { turnKey: string; taskId: string }[] = [];
+    const legacyQueries: { turnKey: string; prompt: string; after_time: string }[] = [];
+    for (const conv of resolvedItems) {
+      for (const turn of conv.turns) {
+        if (turn.status !== "generating") continue;
+        if (activeTurnIds.includes(turn.id)) continue;
+        // 如果已有 image_id 则跳过（第一步已匹配到）
+        if (turn.images.some((img) => img.image_id)) continue;
+        const loadingCount = turn.images.filter((img) => img.status === "loading").length;
+        if (loadingCount === 0) continue;
+        if (turn.task_id) {
+          taskQueries.push({ turnKey: `${conv.id}::${turn.id}`, taskId: turn.task_id });
+        } else {
+          legacyQueries.push({ turnKey: `${conv.id}::${turn.id}`, prompt: turn.prompt, after_time: turn.createdAt });
+        }
+      }
+    }
+
+    // 按 task_id 查询
+    if (taskQueries.length > 0) {
+      const taskResults = await Promise.all(
+        taskQueries.map((q) => getTask(q.taskId).catch(() => null)),
+      );
+      const taskDataByTaskId = new Map<string, { status: string; image_ids: string[]; error?: string | null }>();
+      taskQueries.forEach((q, i) => {
+        const result = taskResults[i];
+        if (result?.task) {
+          taskDataByTaskId.set(q.taskId, result.task);
+        }
+      });
+
+      if (taskDataByTaskId.size > 0) {
+        resolvedItems = resolvedItems.map((conv) => ({
+          ...conv,
+          turns: conv.turns.map((turn) => {
+            const key = `${conv.id}::${turn.id}`;
+            const query = taskQueries.find((q) => q.turnKey === key);
+            if (!query) return turn;
+            const taskData = taskDataByTaskId.get(query.taskId);
+            if (!taskData) return turn;
+            if (taskData.status === "completed" && taskData.image_ids.length > 0) {
+              let assigned = 0;
+              return {
+                ...turn,
+                images: turn.images.map((img) => {
+                  if (img.image_id || img.status !== "loading") return img;
+                  const matchedId = taskData.image_ids[assigned % taskData.image_ids.length];
+                  assigned++;
+                  return matchedId ? { ...img, image_id: matchedId } : img;
+                }),
+              };
+            }
+            // processing → 保持 generating 状态，由队列继续处理
+            // failed → 不在这里处理，后续规范化会保持 generating 让队列重试
+            return turn;
+          }),
+        }));
+      }
+    }
+
+    // 遗留 turn（无 task_id）兜底用 lookupTasks
+    if (legacyQueries.length > 0) {
+      try {
+        const { results } = await lookupTasks(
+          legacyQueries.map((q) => ({ prompt: q.prompt, after_time: q.after_time })),
+        );
+        if (results.length > 0) {
+          const idsByPrompt = new Map<string, string[]>();
+          for (const r of results) {
+            if (r.status === "completed" && r.image_ids.length > 0) {
+              const existing = idsByPrompt.get(r.prompt) || [];
+              existing.push(...r.image_ids);
+              idsByPrompt.set(r.prompt, existing);
+            }
+          }
+          if (idsByPrompt.size > 0) {
+            resolvedItems = resolvedItems.map((conv) => ({
+              ...conv,
+              turns: conv.turns.map((turn) => {
+                const key = `${conv.id}::${turn.id}`;
+                const query = legacyQueries.find((q) => q.turnKey === key);
+                if (!query) return turn;
+                const ids = idsByPrompt.get(query.prompt) || [];
+                if (ids.length === 0) return turn;
+                // 将找到的 task_id 也写入 turn，后续可以用 task_id 查询
+                const matchedResult = results.find((r) => r.prompt === query.prompt && r.task_id);
+                let assigned = 0;
+                return {
+                  ...turn,
+                  task_id: matchedResult?.task_id || turn.task_id,
+                  images: turn.images.map((img) => {
+                    if (img.image_id || img.status !== "loading") return img;
+                    const matchedId = ids[assigned % ids.length];
+                    assigned++;
+                    return matchedId ? { ...img, image_id: matchedId } : img;
+                  }),
+                };
+              }),
+            }));
+          }
+        }
+      } catch { /* lookup 兜底失败不阻塞恢复 */ }
+    }
+  }
+
+  // 第三步：批量请求从后端 images 表恢复 b64_json（仅恢复指定会话）
   const hydrated = await hydrateConversations(resolvedItems, hydrateIds);
 
   const normalized = hydrated.map((conversation) => {
@@ -281,36 +391,36 @@ async function recoverConversationHistory(
         }
         const hasImageIdRef = turn.images.some((img) => img.image_id);
         if (hasImageIdRef) {
-          const failedCount = turn.images.filter((img) => img.status === "error").length;
-          // 有 image_id 就算已解决（即使 b64_json 还没水合），避免没水合的会话被错误标记为失败
-          const resolvedCount = turn.images.filter(
-            (img) => img.status === "success" || img.image_id,
-          ).length;
-          const orphanLoading = turn.images.filter(
+          const hasOrphanLoading = turn.images.some(
             (img) => img.status === "loading" && !img.image_id,
-          ).length;
+          );
+          if (!hasOrphanLoading) {
+            // 所有 loading 图片都有 image_id，根据已有结果判定最终状态
+            const failedCount = turn.images.filter((img) => img.status === "error").length;
+            const successCount = turn.images.filter((img) => img.status === "success").length;
+            changed = true;
+            return {
+              ...turn,
+              status: (failedCount > 0 && successCount === 0 ? "error" : "success") as ImageTurnStatus,
+              error: failedCount > 0 ? `其中 ${failedCount} 张未成功生成` : undefined,
+            };
+          }
+          // 有部分 image_id 但仍有无关联的 loading 图片 → 保持 generating 等待重新生成
           changed = true;
-          const totalFailed = failedCount + orphanLoading;
-          const resolvedStatus: ImageTurnStatus = totalFailed > 0 && resolvedCount === 0 ? "error" : "success";
           return {
             ...turn,
-            status: resolvedStatus,
-            error: totalFailed > 0 ? `其中 ${totalFailed} 张未成功生成` : undefined,
-            images: turn.images.map((img) =>
-              img.status === "loading" && !img.image_id
-                ? { ...img, status: "error" as const, error: "任务中断" }
-                : img,
-            ),
+            status: "generating" as ImageTurnStatus,
+            error: undefined,
           };
         }
-        // 非活跃且无 image_id，孤儿匹配也未找到 → 标记为失败
+        // 非活跃且无 image_id，孤儿匹配也未找到 → 重置为 generating 等待队列重新生成
         changed = true;
         return {
           ...turn,
-          status: "error" as ImageTurnStatus,
-          error: "任务中断，未完成的图片已标记为失败",
+          status: "generating" as ImageTurnStatus,
+          error: undefined,
           images: turn.images.map((image) =>
-            image.status === "loading" ? { ...image, status: "error" as const, error: "任务中断" } : image,
+            image.status === "loading" ? { id: image.id, status: "loading" as const } : image,
           ),
         };
       }
@@ -739,11 +849,98 @@ export default function ImagePage() {
           return;
         }
 
+        // 如果 turn 有 task_id，先检查任务状态，避免重复生成
+        if (pendingTurn.task_id) {
+          try {
+            const taskResult = await getTask(pendingTurn.task_id);
+            const task = taskResult.task;
+            if (task.status === "completed" && task.image_ids.length > 0) {
+              // 后端已完成生成，直接关联 image_ids 并 hydrate
+              const imageIdByTaskId = new Map<string, string>();
+              for (let i = 0; i < pendingImages.length; i++) {
+                if (task.image_ids[i]) {
+                  imageIdByTaskId.set(pendingImages[i].id, task.image_ids[i]);
+                }
+              }
+              if (imageIdByTaskId.size > 0) {
+                await updateConversation(conversationId, (current) => {
+                  const conversation = current ?? snapshot;
+                  return {
+                    ...conversation,
+                    updatedAt: new Date().toISOString(),
+                    turns: conversation.turns.map((turn) =>
+                      turn.id === pendingTurn.id
+                        ? {
+                            ...turn,
+                            images: turn.images.map((image) =>
+                              imageIdByTaskId.has(image.id)
+                                ? { ...image, image_id: imageIdByTaskId.get(image.id) }
+                                : image,
+                            ),
+                          }
+                        : turn,
+                    ),
+                  };
+                });
+              }
+              // hydrate 这批 image_ids 获取 b64_json
+              const allImageIds = task.image_ids.filter(Boolean);
+              if (allImageIds.length > 0) {
+                try {
+                  const { items } = await fetchImagesBatch(allImageIds);
+                  const idToB64 = new Map<string, string>();
+                  for (const item of items) {
+                    if (item.image_url) {
+                      idToB64.set(item.id, item.image_url.replace(/^data:image\/\w+;base64,/, ""));
+                    }
+                  }
+                  for (const img of pendingImages) {
+                    const taskImgId = imageIdByTaskId.get(img.id);
+                    const b64 = taskImgId ? idToB64.get(taskImgId) : undefined;
+                    if (b64) {
+                      await updateConversation(conversationId, (current) => {
+                        const conversation = current ?? snapshot;
+                        return {
+                          ...conversation,
+                          updatedAt: new Date().toISOString(),
+                          turns: conversation.turns.map((turn) =>
+                            turn.id === pendingTurn.id
+                              ? {
+                                  ...turn,
+                                  status: "success" as ImageTurnStatus,
+                                  error: undefined,
+                                  images: turn.images.map((image) =>
+                                    image.id === img.id
+                                      ? { ...image, b64_json: b64, status: "success" as const }
+                                      : image,
+                                  ),
+                                }
+                              : turn,
+                          ),
+                        };
+                      });
+                    }
+                  }
+                } catch { /* hydrate 失败不阻塞 */ }
+              }
+              return;
+            }
+            if (task.status === "processing") {
+              // 检查是否超时（5分钟），未超时则跳过，由后台轮询 handleTaskPolling 处理
+              const taskAge = Date.now() - new Date(task.created_at).getTime();
+              if (taskAge < 5 * 60 * 1000) {
+                return;
+              }
+            }
+            // failed、超时或不存在 → 继续重新生成
+          } catch { /* 查询失败不阻塞，继续走正常生成流程 */ }
+        }
+
         // 单次 API 调用生成所有图片，避免离开页面后中断
         const data =
           pendingTurn.mode === "edit"
-            ? await editImage(referenceFiles, pendingTurn.prompt, undefined, pendingImages.length)
-            : await generateImage(pendingTurn.prompt, undefined, pendingImages.length);
+            ? await editImage(referenceFiles, pendingTurn.prompt, undefined, pendingImages.length, pendingTurn.task_id)
+            : await generateImage(pendingTurn.prompt, undefined, pendingImages.length, pendingTurn.task_id);
 
         const results = data.data || [];
 
@@ -925,6 +1122,89 @@ export default function ImagePage() {
     }
   }, [conversations, runConversationQueue]);
 
+  // 后台轮询：每 5 秒检查 processing 状态的任务是否已完成
+  const pollTaskStatus = useCallback(async () => {
+    for (const conv of conversationsRef.current) {
+      for (const turn of conv.turns) {
+        if (turn.status !== "generating") continue;
+        if (!turn.task_id) continue;
+        const pendingLoading = turn.images.filter((img) => img.status === "loading" && !img.image_id);
+        if (pendingLoading.length === 0) continue;
+        try {
+          const result = await getTask(turn.task_id);
+          if (result.task.status === "completed" && result.task.image_ids.length > 0) {
+            const imageIds = result.task.image_ids;
+            // 关联 image_ids
+            const idMap = new Map<string, string>();
+            for (let i = 0; i < pendingLoading.length; i++) {
+              if (imageIds[i]) idMap.set(pendingLoading[i].id, imageIds[i]);
+            }
+            if (idMap.size > 0) {
+              await updateConversation(conv.id, (current) => {
+                if (!current) return current as unknown as ImageConversation;
+                return {
+                  ...current,
+                  updatedAt: new Date().toISOString(),
+                  turns: current.turns.map((t) =>
+                    t.id === turn.id
+                      ? {
+                          ...t,
+                          images: t.images.map((img) => {
+                            const matchedId = idMap.get(img.id);
+                            return matchedId ? { ...img, image_id: matchedId } : img;
+                          }),
+                        }
+                      : t,
+                  ),
+                };
+              });
+              // hydrate b64_json
+              try {
+                const { items: batchItems } = await fetchImagesBatch(imageIds.filter(Boolean));
+                const b64ById = new Map<string, string>();
+                for (const item of batchItems) {
+                  if (item.image_url) {
+                    b64ById.set(item.id, item.image_url.replace(/^data:image\/\w+;base64,/, ""));
+                  }
+                }
+                if (b64ById.size > 0) {
+                  await updateConversation(conv.id, (current) => {
+                    if (!current) return current as unknown as ImageConversation;
+                    return {
+                      ...current,
+                      updatedAt: new Date().toISOString(),
+                      turns: current.turns.map((t) =>
+                        t.id === turn.id
+                          ? {
+                              ...t,
+                              status: "success" as ImageTurnStatus,
+                              error: undefined,
+                              images: t.images.map((img) => {
+                                const matchedId = idMap.get(img.id);
+                                const b64 = matchedId ? b64ById.get(matchedId) : undefined;
+                                return b64 ? { ...img, b64_json: b64, status: "success" as const } : img;
+                              }),
+                            }
+                          : t,
+                      ),
+                    };
+                  });
+                }
+              } catch { /* hydrate 失败不阻塞下次轮询 */ }
+            }
+          }
+        } catch { /* 单次轮询失败不阻塞 */ }
+      }
+    }
+  }, [updateConversation]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      void pollTaskStatus();
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [pollTaskStatus]);
+
   const handleSubmit = async () => {
     if (isSubmittingRef.current) return;
     const prompt = imagePrompt.trim();
@@ -947,6 +1227,7 @@ export default function ImagePage() {
     const now = new Date().toISOString();
     const conversationId = targetConversation?.id ?? createId();
     const turnId = createId();
+    const taskId = createId();
     const draftTurn: ImageTurn = {
       id: turnId,
       prompt,
@@ -960,6 +1241,7 @@ export default function ImagePage() {
       })),
       createdAt: now,
       status: "generating",
+      task_id: taskId,
     };
 
     const baseConversation: ImageConversation = targetConversation

@@ -33,6 +33,7 @@ export type ImageTurn = {
   createdAt: string;
   status: ImageTurnStatus;
   error?: string;
+  task_id?: string;
 };
 
 export type ImageConversation = {
@@ -134,6 +135,7 @@ function normalizeTurn(turn: ImageTurn & Record<string, unknown>): ImageTurn {
         ? turn.status
         : derivedStatus,
     error: typeof turn.error === "string" ? turn.error : undefined,
+    task_id: typeof turn.task_id === "string" ? turn.task_id : undefined,
   };
 }
 

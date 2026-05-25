@@ -123,22 +123,30 @@ export async function relinkAccount(accessToken: string) {
   });
 }
 
-export async function generateImage(prompt: string, model?: ImageModel, n: number = 1) {
-  return httpRequest<{ created: number; data: Array<{ b64_json: string; revised_prompt?: string; image_id?: string }> }>(
-    "/v1/images/generations",
-    {
-      method: "POST",
-      body: {
-        prompt,
-        ...(model ? { model } : {}),
-        n,
-        response_format: "b64_json",
-      },
+export async function generateImage(prompt: string, model?: ImageModel, n: number = 1, taskId?: string) {
+  return httpRequest<{
+    created: number;
+    data: Array<{ b64_json: string; revised_prompt?: string; image_id?: string }>;
+    task_id?: string;
+  }>("/v1/images/generations", {
+    method: "POST",
+    body: {
+      prompt,
+      ...(model ? { model } : {}),
+      n,
+      response_format: "b64_json",
+      ...(taskId ? { task_id: taskId } : {}),
     },
-  );
+  });
 }
 
-export async function editImage(files: File | File[], prompt: string, model?: ImageModel, n: number = 1) {
+export async function editImage(
+  files: File | File[],
+  prompt: string,
+  model?: ImageModel,
+  n: number = 1,
+  taskId?: string,
+) {
   const formData = new FormData();
   const uploadFiles = Array.isArray(files) ? files : [files];
 
@@ -150,14 +158,18 @@ export async function editImage(files: File | File[], prompt: string, model?: Im
     formData.append("model", model);
   }
   formData.append("n", String(n));
+  if (taskId) {
+    formData.append("task_id", taskId);
+  }
 
-  return httpRequest<{ created: number; data: Array<{ b64_json: string; revised_prompt?: string; image_id?: string }> }>(
-    "/v1/images/edits",
-    {
-      method: "POST",
-      body: formData,
-    },
-  );
+  return httpRequest<{
+    created: number;
+    data: Array<{ b64_json: string; revised_prompt?: string; image_id?: string }>;
+    task_id?: string;
+  }>("/v1/images/edits", {
+    method: "POST",
+    body: formData,
+  });
 }
 
 export async function fetchSettingsConfig() {
@@ -423,6 +435,36 @@ export async function matchOrphanImages(queries: { prompt: string; after_time: s
       body: { queries },
     },
   );
+}
+
+export type TaskStatus = {
+  id: string;
+  status: "processing" | "completed" | "failed";
+  prompt: string;
+  model: string;
+  image_ids: string[];
+  error: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export async function getTask(taskId: string) {
+  return httpRequest<{ task: TaskStatus }>(`/api/images/tasks/${taskId}`);
+}
+
+export async function lookupTasks(queries: { prompt: string; after_time: string }[]) {
+  return httpRequest<{
+    results: Array<{
+      prompt: string;
+      task_id: string;
+      status: string;
+      image_ids: string[];
+      error?: string;
+    }>;
+  }>("/api/images/tasks/lookup", {
+    method: "POST",
+    body: { queries },
+  });
 }
 
 // ── Statistics ───────────────────────────────────────────────────
