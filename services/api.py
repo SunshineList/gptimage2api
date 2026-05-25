@@ -396,7 +396,11 @@ def create_app() -> FastAPI:
         }
 
     @router.post("/api/accounts/upload")
-    async def upload_accounts(body: AccountCreateRequest, admin: dict = Depends(get_admin_auth)):
+    async def upload_accounts(
+            body: AccountCreateRequest,
+            background_tasks: BackgroundTasks,
+            admin: dict = Depends(get_admin_auth),
+    ):
         """专门给注册机使用的轻量级上传接口"""
         tokens = [str(token or "").strip() for token in body.tokens if str(token or "").strip()]
         if not tokens:
@@ -405,9 +409,11 @@ def create_app() -> FastAPI:
         # 仅执行添加，不立即返回全量数据，减少传输压力
         result = account_service.add_accounts(tokens)
         
-        # 后台异步执行刷新（可选，如果注册机不关心账号状态的话可以不刷，
-        # 但建议刷一下以获取账号类型和额度）
-        # 这里为了响应速度，我们可以直接返回结果
+        # 后台异步执行刷新以获取账号类型和额度，同时保持即时响应
+        pure_tokens = result.get("tokens", tokens)
+        if pure_tokens:
+            background_tasks.add_task(account_service.refresh_accounts, pure_tokens)
+            
         return {
             "status": "success",
             "added": result.get("added", 0),

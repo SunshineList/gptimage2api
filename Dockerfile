@@ -33,6 +33,11 @@ RUN pip install --no-cache-dir uv
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 
+# Install Playwright Chromium and its system dependencies
+RUN apt-get update && \
+    /app/.venv/bin/playwright install --with-deps chromium && \
+    rm -rf /var/lib/apt/lists/*
+
 COPY main.py ./
 COPY VERSION ./
 COPY services ./services

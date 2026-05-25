@@ -3,7 +3,7 @@
 """
 gpt_login.py
 ===========
-功能：严格从 gpt_reg_simple.py 深度对齐的独立登录/Token 刷新模块。
+功能：严格从 gpt_reg_simple.py 深度对齐的独立登录/Token 刷新模块（精简纯浏览器 Sentinel 获取）。
 """
 
 import json
@@ -71,141 +71,14 @@ def _make_trace_headers() -> Dict[str, str]:
     }
 
 # ============================================================
-# Sentinel (PoW) 令牌生成器
+# Sentinel 挑战获取 (完全从 gpt_reg_simple.py 移植)
 # ============================================================
 
-class SentinelTokenGenerator:
-    """纯 Python 版本 sentinel token 生成器（PoW）"""
-    MAX_ATTEMPTS = 500000
-    ERROR_PREFIX = "wQ8Lk5FbGpA2NcR9dShT6gYjU7VxZ4D"
-
-    def __init__(self, device_id=None, user_agent=None):
-        self.device_id = device_id or str(uuid.uuid4())
-        self.user_agent = user_agent or "Mozilla/5.0"
-        self.requirements_seed = str(random.random())
-        self.sid = str(uuid.uuid4())
-
-    @staticmethod
-    def _fnv1a_32(text: str):
-        h = 2166136261
-        for ch in text:
-            h ^= ord(ch)
-            h = (h * 16777619) & 0xFFFFFFFF
-        h ^= (h >> 16)
-        h = (h * 2246822507) & 0xFFFFFFFF
-        h ^= (h >> 13)
-        h = (h * 3266489909) & 0xFFFFFFFF
-        h ^= (h >> 16)
-        h &= 0xFFFFFFFF
-        return format(h, "08x")
-
-    def _get_config(self):
-        now_str = time.strftime(
-            "%a %b %d %Y %H:%M:%S GMT+0000 (Coordinated Universal Time)",
-            time.gmtime(),
-        )
-        perf_now = random.uniform(1000, 50000)
-        time_origin = time.time() * 1000 - perf_now
-        nav_prop = random.choice([
-            "vendorSub", "productSub", "vendor", "maxTouchPoints",
-            "scheduling", "userActivation", "doNotTrack", "geolocation",
-            "connection", "plugins", "mimeTypes", "pdfViewerEnabled",
-            "webkitTemporaryStorage", "webkitPersistentStorage",
-            "hardwareConcurrency", "cookieEnabled", "credentials",
-            "mediaDevices", "permissions", "locks", "ink",
-        ])
-        nav_val = f"{nav_prop}-undefined"
-        screen_hash = random.choice([4880, 4096, 5120, 3840, 4480])
-        hw_concurrency = random.choice([4, 8, 12, 16])
-
-        return [
-            screen_hash, now_str, 4294705152, random.random(),
-            self.user_agent,
-            "https://sentinel.openai.com/sentinel/20260219f9f6/sdk.js",
-            None, None, "en-US", "en-US,en", random.random(), nav_val,
-            random.choice(["location", "implementation", "URL", "documentURI", "compatMode"]),
-            random.choice(["Object", "Function", "Array", "Number", "parseFloat", "undefined"]),
-            perf_now, self.sid, "",
-            hw_concurrency, time_origin,
-            0, 0, 0, 0, 0, 0, 0,
-        ]
-
-    @staticmethod
-    def _base64_encode(data):
-        raw = json.dumps(data, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
-        return base64.b64encode(raw).decode("ascii")
-
-    def _run_check(self, start_time, seed, difficulty, config, nonce):
-        config[3] = nonce
-        config[9] = round((time.time() - start_time) * 1000)
-        data = self._base64_encode(config)
-        hash_hex = self._fnv1a_32(seed + data)
-        diff_len = len(difficulty)
-        if hash_hex[:diff_len] <= difficulty:
-            return data + "~S"
-        return None
-
-    def generate_token(self, seed=None, difficulty=None):
-        seed = seed if seed is not None else self.requirements_seed
-        difficulty = str(difficulty or "0")
-        start_time = time.time()
-        config = self._get_config()
-        for i in range(self.MAX_ATTEMPTS):
-            result = self._run_check(start_time, seed, difficulty, config, i)
-            if result:
-                return "gAAAAAB" + result
-        return "gAAAAAB" + self.ERROR_PREFIX + self._base64_encode(str(None))
-
-    def generate_requirements_token(self):
-        config = self._get_config()
-        config[3] = 1
-        config[9] = round(random.uniform(5, 50))
-        data = self._base64_encode(config)
-        return "gAAAAAC" + data
-
-# ============================================================
-# Sentinel 挑战拉取 & 构建
-# ============================================================
-
-def fetch_sentinel_challenge(session, device_id, flow="authorize_continue", user_agent=None,
-                             sec_ch_ua=None, impersonate=None) -> Optional[Dict[str, Any]]:
-    generator = SentinelTokenGenerator(device_id=device_id, user_agent=user_agent)
-    req_body = {"p": generator.generate_requirements_token(), "id": device_id, "flow": flow}
-    headers = {
-        "Content-Type": "text/plain;charset=UTF-8",
-        "Referer": "https://sentinel.openai.com/sentinel/20260219f9f6/frame.html?sv=20260219f9f6",
-        "Origin": "https://sentinel.openai.com",
-        "User-Agent": user_agent or "Mozilla/5.0",
-        "sec-ch-ua": sec_ch_ua or "",
-        "sec-ch-ua-mobile": "?0", "sec-ch-ua-platform": '"Windows"',
-    }
-    kwargs = {"data": json.dumps(req_body), "headers": headers, "timeout": 20, "verify": False}
-    if impersonate: kwargs["impersonate"] = impersonate
-        
-    try:
-        resp = session.post("https://sentinel.openai.com/backend-api/sentinel/req", **kwargs)
-        if resp.status_code != 200: return None
-        data = resp.json()
-        return data if isinstance(data, dict) else None
-    except Exception:
-        return None
-
-def _build_sentinel_token_http(session, device_id, flow, user_agent=None,
-                               sec_ch_ua=None, impersonate=None) -> Optional[str]:
-    challenge = fetch_sentinel_challenge(session, device_id, flow=flow, user_agent=user_agent,
-                                         sec_ch_ua=sec_ch_ua, impersonate=impersonate)
-    if not challenge: return None
-    c_value = challenge.get("token", "")
-    if not c_value: return None
-    pow_data = challenge.get("proofofwork") or {}
-    generator = SentinelTokenGenerator(device_id=device_id, user_agent=user_agent)
-    if pow_data.get("required") and pow_data.get("seed"):
-        p_value = generator.generate_token(seed=pow_data.get("seed"), difficulty=pow_data.get("difficulty", "0"))
-    else:
-        p_value = generator.generate_requirements_token()
-    return json.dumps({"p": p_value, "t": "", "c": c_value, "id": device_id, "flow": flow}, separators=(",", ":"))
-
-def _build_sentinel_token_playwright(flow, proxy=None, user_agent=None, device_id=None) -> Optional[str]:
+def build_sentinel_token(
+    session, device_id: str, flow: str = "authorize_continue",
+    user_agent=None, sec_ch_ua=None, impersonate=None, proxy=None, require_turnstile=False
+) -> Optional[str]:
+    """通过 Playwright 浏览器获取 sentinel token"""
     try:
         from sentinel_browser import get_sentinel_tokens
         res = get_sentinel_tokens(flows=[flow], proxy=proxy, device_id=device_id)
@@ -213,27 +86,16 @@ def _build_sentinel_token_playwright(flow, proxy=None, user_agent=None, device_i
             f_data = res["flows"].get(flow)
             if f_data and "token" in f_data:
                 token = f_data["token"]
-                if isinstance(token, dict): return json.dumps(token, separators=(",", ":"))
+                if isinstance(token, dict):
+                    return json.dumps(token, separators=(",", ":"))
                 return token
         return None
-    except Exception:
+    except Exception as e:
+        print(f"[build_sentinel_token] 获取浏览器 Token 异常: {e}")
         return None
 
-def build_sentinel_token(
-    session, device_id: str, flow: str = "authorize_continue",
-    user_agent=None, sec_ch_ua=None, impersonate=None, proxy=None, require_turnstile=False
-) -> Optional[str]:
-    if require_turnstile:
-        token = _build_sentinel_token_playwright(flow, proxy=proxy, user_agent=user_agent, device_id=device_id)
-        if token: return token
-        return _build_sentinel_token_http(session, device_id, flow, user_agent, sec_ch_ua, impersonate)
-    else:
-        token = _build_sentinel_token_http(session, device_id, flow, user_agent, sec_ch_ua, impersonate)
-        if token: return token
-        return _build_sentinel_token_playwright(flow, proxy=proxy, user_agent=user_agent, device_id=device_id)
-
 # ============================================================
-# ChatGPT 登录类 (严格同步自 gpt_reg_simple.py 的 ProtocolRegistrar)
+# ChatGPT 登录类
 # ============================================================
 
 class ChatGPTLogin:
@@ -267,10 +129,8 @@ class ChatGPTLogin:
         # 初始化 Cookie (全域同步)
         for domain in [".auth.openai.com", "auth.openai.com", ".chatgpt.com", "chatgpt.com"]:
             self.session.cookies.set("oai-did", self.device_id, domain=domain)
-        
-        self.sentinel_gen = SentinelTokenGenerator(device_id=self.device_id, user_agent=self.ua)
 
-    def _build_api_headers(self, referer: str, with_sentinel: bool = False) -> Dict[str, str]:
+    def _build_api_headers(self, referer: str) -> Dict[str, str]:
         h = {
             "accept": "application/json",
             "accept-language": "en-US,en;q=0.9",
@@ -287,16 +147,13 @@ class ChatGPTLogin:
             "oai-device-id": self.device_id,
         }
         h.update(_make_trace_headers())
-        if with_sentinel:
-            h["openai-sentinel-token"] = self.sentinel_gen.generate_token()
         return h
 
     def login_web(self, email: str, password: str, email_service: EmailService) -> Optional[str]:
         """
-        ChatGPT Web 登录获取 Token (终极对齐版)
+        ChatGPT Web 登录获取 Token (对齐简化版)
         """
         try:
-            # 直接使用实例持有的 Session，确保 Cookie 和 Header 连贯
             session = self.session
             
             nav_headers = {
@@ -318,7 +175,7 @@ class ChatGPTLogin:
             r = session.get(f"{self.BASE}/api/auth/csrf", headers={"accept": "application/json", "referer": f"{self.BASE}/"})
             csrf = r.json().get("csrfToken", "")
             
-            # 【关键对齐】补全注册机 signin 方法中的所有参数
+            # 补全注册机 signin 方法中的所有参数
             signin_params = {
                 "prompt": "login",
                 "ext-oai-did": self.device_id,
@@ -372,7 +229,6 @@ class ChatGPTLogin:
 
             print(f"      [登录] Step 5: 验证密码")
             sentinel_pwd = build_sentinel_token(session, self.device_id, "password_verify", self.ua, self.sec_ch_ua, proxy=self.proxy)
-            # Referer 使用跳转后的真实 URL
             headers["referer"] = r.url 
             if sentinel_pwd: headers["openai-sentinel-token"] = sentinel_pwd
             
@@ -384,7 +240,7 @@ class ChatGPTLogin:
             # --- Step 6: 登录 OTP 验证 (如果触发) ---
             if page_type == "email_otp_verification" or "email-verification" in continue_url:
                 print(f"      [登录] Step 6: 需要二次邮件认证")
-                h_otp = self._build_api_headers(f"{self.AUTH}/email-verification", with_sentinel=False)
+                h_otp = self._build_api_headers(f"{self.AUTH}/email-verification")
                 h_otp["oai-device-id"] = self.device_id
                 
                 # 初始化 OTP 发送
@@ -418,7 +274,7 @@ class ChatGPTLogin:
                 full_url = continue_url if continue_url.startswith("http") else f"{self.AUTH}{continue_url}"
                 session.get(full_url, headers=nav_headers, allow_redirects=True)
             
-            # --- Step 8: 获取 accessToken (严格复刻) ---
+            # --- Step 8: 获取 accessToken ---
             print(f"      [登录] Step 8: 获取 accessToken")
             time.sleep(3)
             for _ in range(3):

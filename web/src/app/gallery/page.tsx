@@ -67,28 +67,28 @@ export default function GalleryPage() {
     <div className="container mx-auto max-w-7xl px-4 py-8">
       <div className="mb-8 flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-stone-950 font-['Fira_Code']">我的画廊</h1>
-          <p className="mt-2 text-stone-500 font-['Fira_Sans']">查看并分享您生成的所有图片作品。</p>
+          <h1 className="bg-gradient-to-br from-foreground via-primary to-primary/80 bg-clip-text text-3xl font-bold tracking-tight text-transparent">我的画廊</h1>
+          <p className="mt-2 text-muted-foreground text-sm">查看并分享您生成的所有图片作品。</p>
         </div>
-        <Button onClick={loadImages} variant="outline" className="rounded-xl">
+        <Button onClick={loadImages} variant="outline" className="rounded-xl border-border">
           刷新
         </Button>
       </div>
 
       {isLoading ? (
         <div className="flex h-64 items-center justify-center">
-          <LoaderCircle className="size-8 animate-spin text-stone-400" />
+          <LoaderCircle className="size-8 animate-spin text-primary" />
         </div>
       ) : images.length === 0 ? (
-        <Card className="flex h-64 flex-col items-center justify-center border-dashed border-stone-200 bg-stone-50/50">
-          <p className="text-stone-400">暂无图片记录</p>
-          <Button variant="link" onClick={() => window.location.href = "/image"}>去生成一张吧</Button>
+        <Card className="flex h-64 flex-col items-center justify-center border-dashed border-border bg-white/50">
+          <p className="text-muted-foreground">暂无图片记录</p>
+          <Button variant="link" className="text-primary hover:text-primary/90" onClick={() => window.location.href = "/image"}>去生成一张吧</Button>
         </Card>
       ) : (
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {images.map((img) => (
-            <Card key={img.id} className="group relative overflow-hidden rounded-[24px] border-none bg-white shadow-sm transition-all hover:shadow-xl hover:-translate-y-1">
-              <div className="aspect-square overflow-hidden bg-stone-100">
+            <Card key={img.id} className="group relative overflow-hidden rounded-[24px] border-none bg-white shadow-sm ring-1 ring-secondary/80 transition-all hover:shadow-md hover:-translate-y-1">
+              <div className="aspect-square overflow-hidden bg-secondary">
                 <img
                   src={img.image_url}
                   alt={img.prompt}
@@ -116,7 +116,7 @@ export default function GalleryPage() {
               </div>
               
               {img.is_public && (
-                <Badge className="absolute right-3 top-3 bg-green-500/80 backdrop-blur-md text-white border-none">已发布到广场</Badge>
+                <Badge className="absolute right-3 top-3 bg-emerald-500/80 backdrop-blur-md text-white border-none rounded-full">已发布到广场</Badge>
               )}
             </Card>
           ))}
@@ -126,42 +126,42 @@ export default function GalleryPage() {
       <Dialog open={!!selectedImage} onOpenChange={() => setSelectedImage(null)}>
         <DialogContent className="max-w-4xl overflow-hidden rounded-[32px] border-none p-0 bg-white/95 backdrop-blur-xl">
           <div className="grid md:grid-cols-2">
-            <div className="bg-stone-100">
+            <div className="bg-secondary">
               <img src={selectedImage?.image_url} alt="" className="h-full w-full object-contain" />
             </div>
             <div className="flex flex-col p-8">
               <DialogHeader>
-                <DialogTitle className="text-2xl font-bold text-stone-900 font-['Fira_Code']">详情</DialogTitle>
-                <DialogDescription className="mt-4 text-stone-600 font-['Fira_Sans'] leading-relaxed">
+                <DialogTitle className="text-2xl font-bold text-foreground">详情</DialogTitle>
+                <DialogDescription className="mt-4 text-muted-foreground leading-relaxed">
                   <div className="space-y-6">
                     <div>
-                      <h4 className="flex items-center gap-2 text-sm font-semibold text-stone-900 mb-2">
-                        <Info className="size-4 text-indigo-500" /> 提示词
+                      <h4 className="flex items-center gap-2 text-sm font-semibold text-foreground mb-2">
+                        <Info className="size-4 text-primary" /> 提示词
                       </h4>
-                      <div className="rounded-2xl bg-stone-50 p-4 text-sm border border-stone-100">
+                      <div className="rounded-2xl bg-secondary p-4 text-sm border border-border/60">
                         {selectedImage?.prompt}
                       </div>
                     </div>
                     <div className="flex flex-wrap gap-4">
                       <div>
-                        <span className="text-xs text-stone-400 block mb-1 uppercase tracking-wider">生成模型</span>
-                        <Badge variant="outline" className="rounded-lg">{selectedImage?.model}</Badge>
+                        <span className="text-xs text-muted-foreground block mb-1 uppercase tracking-wider">生成模型</span>
+                        <Badge variant="outline" className="rounded-lg border-secondary">{selectedImage?.model}</Badge>
                       </div>
                       <div>
-                        <span className="text-xs text-stone-400 block mb-1 uppercase tracking-wider">生成时间</span>
-                        <span className="text-sm text-stone-700">{selectedImage?.created_at && new Date(selectedImage.created_at).toLocaleString()}</span>
+                        <span className="text-xs text-muted-foreground block mb-1 uppercase tracking-wider">生成时间</span>
+                        <span className="text-sm text-foreground">{selectedImage?.created_at && new Date(selectedImage.created_at).toLocaleString()}</span>
                       </div>
                     </div>
                   </div>
                 </DialogDescription>
               </DialogHeader>
               <div className="mt-auto pt-8 flex gap-3">
-                <Button className="flex-1 rounded-2xl bg-stone-950 text-white hover:bg-stone-800" onClick={() => selectedImage && handleDownload(selectedImage)}>
+                <Button className="flex-1 rounded-2xl bg-primary text-white hover:bg-primary/95" onClick={() => selectedImage && handleDownload(selectedImage)}>
                   下载图片
                 </Button>
                 <Button 
                   variant="outline" 
-                  className={`flex-1 rounded-2xl border-stone-200 ${selectedImage?.is_public ? "text-red-500 border-red-100 hover:bg-red-50" : ""}`}
+                  className={`flex-1 rounded-2xl border-border ${selectedImage?.is_public ? "text-red-500 border-red-100 hover:bg-red-50" : "hover:bg-secondary"}`}
                   onClick={() => selectedImage && handleTogglePlaza(selectedImage)}
                 >
                   {selectedImage?.is_public ? "从广场移除" : "发布到广场"}
