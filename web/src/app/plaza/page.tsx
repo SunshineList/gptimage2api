@@ -1,94 +1,114 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { PlazaPost, fetchPlaza } from "@/lib/api";
 import { toast } from "sonner";
-import { LoaderCircle, User, MessageSquareQuote, Layers, Calendar } from "lucide-react";
+import { LoaderCircle, User, MessageSquareQuote, Calendar, Sparkles, ArrowRight } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 
 export default function PlazaPage() {
+  const router = useRouter();
   const [posts, setPosts] = useState<PlazaPost[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  const loadPlaza = async () => {
+  const loadPlaza = useCallback(async () => {
     setIsLoading(true);
     try {
       const res = await fetchPlaza();
       setPosts(res.items);
-    } catch (error) {
+    } catch {
       toast.error("加载广场失败");
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadPlaza();
-  }, []);
+  }, [loadPlaza]);
 
   return (
-    <div className="container mx-auto max-w-7xl px-4 py-8">
-      <div className="mb-12 text-center">
-        <h1 className="bg-gradient-to-br from-foreground via-primary to-primary/80 bg-clip-text text-4xl font-extrabold tracking-tight text-transparent sm:text-5xl">创作广场</h1>
-        <p className="mt-4 text-lg text-muted-foreground">发现全球用户分享的精美 AI 艺术作品及提示词。</p>
-        <div className="mt-6 flex justify-center gap-2">
-            <Badge variant="secondary" className="bg-primary/10 text-primary hover:bg-primary/25 px-3 py-1 border-none rounded-full">活跃社区</Badge>
-            <Badge variant="secondary" className="bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20 px-3 py-1 border-none rounded-full">{posts.length} 件作品</Badge>
+    <div className="mx-auto w-full max-w-7xl px-1 pb-16 pt-6 sm:px-6 sm:pt-10">
+      {/* Header */}
+      <div className="mb-10 text-center">
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-primary/10 via-accent to-primary/10 px-4 py-1.5 text-[11px] font-semibold tracking-widest text-primary uppercase">
+          <Sparkles className="size-3" />
+          社区画廊
+        </span>
+        <h1 className="mt-4 text-4xl font-extrabold tracking-tight text-foreground sm:text-5xl">创作广场</h1>
+        <p className="mt-3 text-sm text-muted-foreground sm:text-base">发现全球用户分享的精美 AI 艺术作品及提示词</p>
+        <div className="mt-5 flex items-center justify-center gap-3">
+          <Badge variant="secondary" className="rounded-full bg-secondary px-3 py-1 text-xs font-medium text-muted-foreground border-border/60">
+            {posts.length} 件作品
+          </Badge>
+          <Button
+            variant="outline"
+            size="sm"
+            className="rounded-full border-border/80 bg-card text-xs shadow-sm transition hover:bg-secondary"
+            onClick={() => router.push("/image")}
+          >
+            开始创作
+            <ArrowRight className="ml-1 size-3" />
+          </Button>
         </div>
       </div>
 
       {isLoading ? (
         <div className="flex h-64 items-center justify-center">
-          <LoaderCircle className="size-8 animate-spin text-primary" />
+          <LoaderCircle className="size-8 animate-spin text-primary/60" />
         </div>
       ) : posts.length === 0 ? (
-        <Card className="flex h-64 flex-col items-center justify-center border-dashed border-border bg-white/50">
-          <p className="text-muted-foreground">广场目前空空如也，去发布您的第一件作品吧！</p>
+        <Card className="flex h-64 flex-col items-center justify-center gap-4 rounded-3xl border-dashed border-border/80 bg-secondary/30">
+          <Sparkles className="size-10 text-muted-foreground/30" />
+          <p className="text-sm text-muted-foreground">广场目前空空如也，去发布您的第一件作品吧</p>
+          <Button className="rounded-xl bg-primary text-sm font-semibold text-white shadow-sm" onClick={() => router.push("/image")}>
+            去生图后台
+            <ArrowRight className="ml-1 size-3.5" />
+          </Button>
         </Card>
       ) : (
-        <div className="columns-1 gap-6 sm:columns-2 lg:columns-3 xl:columns-4">
+        <div className="columns-1 gap-5 sm:columns-2 lg:columns-3 xl:columns-4">
           {posts.map((post) => (
-            <Card key={post.id} className="mb-6 break-inside-avoid overflow-hidden border-none bg-white shadow-sm ring-1 ring-secondary/80 transition-all hover:shadow-md hover:ring-primary/20">
-              <div className="relative group overflow-hidden">
+            <Card
+              key={post.id}
+              className="mb-5 break-inside-avoid overflow-hidden rounded-2xl border-border/40 bg-card shadow-sm ring-1 ring-border/20 transition-all hover:shadow-lg"
+            >
+              <div className="relative overflow-hidden">
                 <img
                   src={post.image_url}
                   alt={post.prompt}
-                  className="h-auto w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+                  loading="lazy"
+                  className="h-auto w-full object-cover transition duration-500 hover:scale-[1.03]"
                 />
-                <div className="absolute inset-0 bg-black/5 opacity-0 transition-opacity group-hover:opacity-100 pointer-events-none" />
               </div>
-              
-              <div className="p-5">
-                <div className="mb-4 space-y-3">
-                  <div className="flex items-start gap-2">
-                    <MessageSquareQuote className="size-4 mt-1 text-primary shrink-0" />
-                    <p className="text-sm text-foreground leading-relaxed italic">"{post.prompt}"</p>
-                  </div>
+
+              <div className="border-t border-border/30 p-4 sm:p-5">
+                <div className="mb-3 flex items-start gap-2">
+                  <MessageSquareQuote className="mt-0.5 size-3.5 shrink-0 text-primary/60" />
+                  <p className="text-xs leading-relaxed text-foreground/80 italic line-clamp-3">
+                    &ldquo;{post.prompt}&rdquo;
+                  </p>
                 </div>
-                
-                <div className="flex flex-col gap-3 pt-4 border-t border-secondary">
-                   <div className="flex items-center justify-between">
-                     <div className="flex items-center gap-2">
-                        <div className="size-6 rounded-full bg-secondary flex items-center justify-center">
-                          <User className="size-3 text-muted-foreground" />
-                        </div>
-                        <span className="text-xs font-medium text-foreground">{post.user_nickname}</span>
-                     </div>
-                     <Badge variant="outline" className="text-[10px] px-1.5 py-0 rounded-md border-secondary text-muted-foreground">
-                        {post.model}
-                     </Badge>
-                   </div>
-                   <div className="flex items-center gap-4 text-[10px] text-muted-foreground">
-                      <div className="flex items-center gap-1">
-                        <Calendar className="size-3" />
-                        {new Date(post.created_at).toLocaleDateString()}
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Layers className="size-3" />
-                        GPT-Image
-                      </div>
-                   </div>
+
+                <div className="flex items-center justify-between border-t border-border/20 pt-3">
+                  <div className="flex items-center gap-2">
+                    <div className="flex size-6 items-center justify-center rounded-full bg-secondary">
+                      <User className="size-3 text-muted-foreground" />
+                    </div>
+                    <span className="text-[11px] font-medium text-foreground">{post.user_nickname}</span>
+                  </div>
+                  <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                      <Calendar className="size-3" />
+                      {new Date(post.created_at).toLocaleDateString("zh-CN")}
+                    </span>
+                    <Badge variant="outline" className="rounded-md border-border/60 px-1.5 py-0 text-[10px] text-muted-foreground">
+                      {post.model}
+                    </Badge>
+                  </div>
                 </div>
               </div>
             </Card>

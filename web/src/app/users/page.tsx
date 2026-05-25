@@ -8,6 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { fetchUsers, createUser, deleteUser, updateUser, type User } from "@/lib/api";
 
 export default function UsersPage() {
@@ -140,13 +141,13 @@ export default function UsersPage() {
     <div className="space-y-6">
       <section className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="space-y-1">
-          <div className="text-xs font-semibold tracking-[0.18em] text-stone-500 uppercase">
-            User Management
+          <div className="text-xs font-semibold tracking-[0.18em] text-muted-foreground uppercase">
+            用户管理
           </div>
-          <h1 className="text-2xl font-semibold tracking-tight">用户管理</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">用户管理</h1>
         </div>
-        <Button 
-          className="h-10 rounded-xl bg-stone-950 px-4 text-white hover:bg-stone-800"
+        <Button
+          className="h-10 rounded-xl bg-primary px-4 text-primary-foreground hover:bg-primary/90"
           onClick={() => setShowAddDialog(true)}
         >
           <UserPlus className="mr-2 size-4" />
@@ -166,26 +167,26 @@ export default function UsersPage() {
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <label className="text-sm font-medium">用户名</label>
-              <Input 
-                placeholder="例如：张三" 
+              <Input
+                placeholder="例如：张三"
                 value={newUserName}
                 onChange={e => setNewUserName(e.target.value)}
-                className="rounded-xl border-stone-200"
+                className="rounded-xl border-border"
               />
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">额度 (画图次数，-1 为无限制)</label>
-              <Input 
+              <Input
                 type="number"
                 value={newUserQuota}
                 onChange={e => setNewUserQuota(e.target.value)}
-                className="rounded-xl border-stone-200"
+                className="rounded-xl border-border"
               />
             </div>
           </div>
           <DialogFooter>
             <Button variant="secondary" onClick={() => setShowAddDialog(false)} className="rounded-xl">取消</Button>
-            <Button onClick={() => void handleCreateUser()} disabled={isCreating} className="rounded-xl bg-stone-950 text-white">
+            <Button onClick={() => void handleCreateUser()} disabled={isCreating} className="rounded-xl bg-primary text-primary-foreground hover:bg-primary/90">
               {isCreating && <LoaderCircle className="mr-2 size-4 animate-spin" />}
               立即创建
             </Button>
@@ -205,37 +206,38 @@ export default function UsersPage() {
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <label className="text-sm font-medium">用户名</label>
-              <Input 
-                placeholder="用户名" 
+              <Input
+                placeholder="用户名"
                 value={editUserName}
                 onChange={e => setEditUserName(e.target.value)}
-                className="rounded-xl border-stone-200"
+                className="rounded-xl border-border"
               />
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">额度 (画图次数，-1 为无限制)</label>
-              <Input 
+              <Input
                 type="number"
                 value={editUserQuota}
                 onChange={e => setEditUserQuota(e.target.value)}
-                className="rounded-xl border-stone-200"
+                className="rounded-xl border-border"
               />
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">账号状态</label>
-              <select 
-                value={editUserStatus}
-                onChange={e => setEditUserStatus(e.target.value as any)}
-                className="flex h-10 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm ring-offset-white focus:outline-none focus:ring-2 focus:ring-stone-950 focus:ring-offset-2"
-              >
-                <option value="active">正常</option>
-                <option value="disabled">禁用</option>
-              </select>
+              <Select value={editUserStatus} onValueChange={(value) => setEditUserStatus(value as "active" | "disabled")}>
+                <SelectTrigger className="h-10 w-full rounded-xl border-border">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">正常</SelectItem>
+                  <SelectItem value="disabled">禁用</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <DialogFooter>
             <Button variant="secondary" onClick={() => setShowEditDialog(false)} className="rounded-xl">取消</Button>
-            <Button onClick={() => void handleUpdateUser()} disabled={isUpdating} className="rounded-xl bg-stone-950 text-white">
+            <Button onClick={() => void handleUpdateUser()} disabled={isUpdating} className="rounded-xl bg-primary text-primary-foreground hover:bg-primary/90">
               {isUpdating && <LoaderCircle className="mr-2 size-4 animate-spin" />}
               确认修改
             </Button>
@@ -246,21 +248,21 @@ export default function UsersPage() {
       <section className="space-y-4">
         <div className="flex items-center gap-3">
           <div className="relative w-full sm:max-w-sm">
-            <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-stone-400" />
+            <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={query}
               onChange={e => setQuery(e.target.value)}
               placeholder="搜索用户名或 Key"
-              className="h-10 rounded-xl border-stone-200 bg-white/85 pl-10"
+              className="h-10 rounded-xl border-border bg-card pl-10"
             />
           </div>
         </div>
 
-        <Card className="overflow-hidden rounded-2xl border-white/80 bg-white/90 shadow-sm">
+        <Card className="overflow-hidden rounded-2xl border-border/40 bg-card shadow-sm">
           <CardContent className="p-0">
             <div className="overflow-x-auto">
               <table className="w-full text-left">
-                <thead className="border-b border-stone-100 text-[11px] text-stone-400 uppercase tracking-[0.18em]">
+                <thead className="border-b border-border/60 text-[11px] text-muted-foreground uppercase tracking-[0.18em]">
                   <tr>
                     <th className="px-6 py-4">用户名</th>
                     <th className="px-6 py-4">API Key</th>
@@ -270,20 +272,20 @@ export default function UsersPage() {
                     <th className="px-6 py-4">操作</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-stone-100">
+                <tbody className="divide-y divide-border/40">
                   {filteredUsers.map(user => (
-                    <tr key={user.key} className="text-sm transition-colors hover:bg-stone-50/50">
+                    <tr key={user.key} className="text-sm transition-colors hover:bg-secondary/50">
                       <td className="px-6 py-4">
-                        <div className="font-medium text-stone-900">{user.name}</div>
-                        <div className="mt-0.5 text-[10px] text-stone-400">{user.last_used_at ? `最后活跃: ${user.last_used_at}` : "尚未活跃"}</div>
+                        <div className="font-medium text-foreground">{user.name}</div>
+                        <div className="mt-0.5 text-[10px] text-muted-foreground">{user.last_used_at ? `最后活跃: ${user.last_used_at}` : "尚未活跃"}</div>
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-2">
-                          <code className="rounded bg-stone-100 px-1.5 py-0.5 text-xs text-stone-600">
+                          <code className="rounded bg-secondary px-1.5 py-0.5 text-xs text-muted-foreground">
                             {user.key.slice(0, 8)}...{user.key.slice(-4)}
                           </code>
-                          <button 
-                            className="text-stone-400 hover:text-stone-600 transition-colors"
+                          <button
+                            className="text-muted-foreground hover:text-foreground transition-colors"
                             onClick={() => void copyToClipboard(user.key)}
                           >
                             <Copy className="size-3.5" />
@@ -300,18 +302,18 @@ export default function UsersPage() {
                           {user.status === "active" ? "正常" : "已禁用"}
                         </Badge>
                       </td>
-                      <td className="px-6 py-4 text-stone-500">{user.created_at}</td>
+                      <td className="px-6 py-4 text-muted-foreground">{user.created_at}</td>
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
-                          <button 
-                            className="text-stone-400 hover:text-stone-900 transition-colors"
+                          <button
+                            className="text-muted-foreground hover:text-foreground transition-colors"
                             onClick={() => handleEditUser(user)}
                             title="编辑"
                           >
                             <Pencil className="size-4" />
                           </button>
-                          <button 
-                            className="text-stone-400 hover:text-rose-500 transition-colors"
+                          <button
+                            className="text-muted-foreground hover:text-rose-500 transition-colors"
                             onClick={() => void handleDeleteUser(user.key)}
                             title="删除"
                           >
@@ -323,7 +325,7 @@ export default function UsersPage() {
                   ))}
                   {filteredUsers.length === 0 && !isLoading && (
                     <tr>
-                      <td colSpan={6} className="py-12 text-center text-stone-400">
+                      <td colSpan={6} className="py-12 text-center text-muted-foreground">
                         暂无用户数据
                       </td>
                     </tr>

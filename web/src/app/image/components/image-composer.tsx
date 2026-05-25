@@ -87,7 +87,7 @@ export function ImageComposer({
                     setLightboxIndex(index);
                     setLightboxOpen(true);
                   }}
-                  className="group size-16 overflow-hidden rounded-2xl border border-stone-200 bg-stone-50 transition hover:border-stone-300"
+                  className="group size-16 overflow-hidden rounded-xl border border-white/80 bg-white shadow-sm transition hover:shadow-md hover:scale-[1.05]"
                   aria-label={`预览参考图 ${image.name || index + 1}`}
                 >
                   <img
@@ -102,7 +102,7 @@ export function ImageComposer({
                     event.stopPropagation();
                     onRemoveReferenceImage(index);
                   }}
-                  className="absolute -right-1 -top-1 inline-flex size-5 items-center justify-center rounded-full border border-stone-200 bg-white text-stone-500 transition hover:border-stone-300 hover:text-stone-800"
+                  className="absolute -right-1 -top-1 inline-flex size-5 items-center justify-center rounded-full border border-white/80 bg-white/90 text-muted-foreground shadow-sm backdrop-blur-sm transition hover:border-rose-200 hover:text-rose-500"
                   aria-label={`移除参考图 ${image.name || index + 1}`}
                 >
                   <X className="size-3" />
@@ -112,7 +112,7 @@ export function ImageComposer({
           </div>
         ) : null}
 
-        <div className="overflow-hidden rounded-[32px] border border-stone-200 bg-white">
+        <div className="overflow-hidden rounded-[28px] border border-border/60 bg-card shadow-sm transition-shadow focus-within:shadow-md focus-within:border-primary/30">
           <div
             className="relative cursor-text"
             onClick={() => {
@@ -140,24 +140,24 @@ export function ImageComposer({
                   void onSubmit();
                 }
               }}
-              className="min-h-[148px] resize-none rounded-[32px] border-0 bg-transparent px-6 pt-6 pb-20 text-[15px] leading-7 text-stone-900 shadow-none placeholder:text-stone-400 focus-visible:ring-0"
+              className="min-h-[148px] resize-none rounded-[28px] border-0 bg-transparent px-6 pt-6 pb-20 text-[15px] leading-7 text-foreground shadow-none placeholder:text-muted-foreground/60 focus-visible:ring-0"
             />
 
-            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-white via-white/95 to-transparent px-3 pb-3 pt-6 sm:px-6 sm:pb-4">
+            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-card via-card/95 to-transparent px-3 pb-3 pt-6 sm:px-6 sm:pb-4">
               <div className="flex items-end justify-between gap-2">
                 <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
                   {mode === "edit" && (
                     <Button
                       type="button"
                       variant="outline"
-                      className="h-9 rounded-full border-stone-200 bg-white px-3 text-xs font-medium text-stone-700 shadow-none sm:h-10 sm:px-4 sm:text-sm"
+                      className="h-9 rounded-full border-border/80 bg-card px-3 text-xs font-medium text-foreground/70 shadow-none transition hover:bg-secondary hover:text-foreground sm:h-10 sm:px-4 sm:text-sm"
                       onClick={onPickReferenceImage}
                     >
                       <ImagePlus className="size-3.5 sm:size-4" />
                       <span className="hidden sm:inline">{referenceImages.length > 0 ? "继续添加" : "上传图片"}</span>
                     </Button>
                   )}
-                  <div className="rounded-full bg-stone-100 px-3 py-1.5 text-[11px] font-medium text-stone-600 sm:py-2 sm:text-xs">
+                  <div className="rounded-full bg-secondary px-3 py-1.5 text-[11px] font-medium text-muted-foreground sm:py-2 sm:text-xs">
                     <span className="hidden sm:inline">剩余额度 </span>{availableQuota}
                   </div>
                   {activeTaskCount > 0 && (
@@ -166,8 +166,8 @@ export function ImageComposer({
                       {activeTaskCount}<span className="hidden sm:inline"> 个任务中</span>
                     </div>
                   )}
-                  <div className="flex items-center gap-1.5 rounded-full border border-stone-200 bg-white px-2.5 py-1 sm:gap-2 sm:px-3">
-                    <span className="text-[11px] font-medium text-stone-700 sm:text-sm">张数</span>
+                  <div className="flex items-center gap-1.5 rounded-full border border-border/80 bg-card px-2.5 py-1 sm:gap-2 sm:px-3">
+                    <span className="text-[11px] font-medium text-foreground/70 sm:text-sm">张数</span>
                     <Input
                       type="number"
                       min="1"
@@ -175,7 +175,7 @@ export function ImageComposer({
                       step="1"
                       value={imageCount}
                       onChange={(event) => onImageCountChange(event.target.value)}
-                      className="h-7 w-[48px] border-0 bg-transparent px-0 text-center text-[13px] font-medium text-stone-700 shadow-none focus-visible:ring-0 sm:h-8 sm:w-[64px] sm:text-sm"
+                      className="h-7 w-[48px] border-0 bg-transparent px-0 text-center text-[13px] font-medium text-foreground shadow-none focus-visible:ring-0 sm:h-8 sm:w-[64px] sm:text-sm"
                     />
                   </div>
                   <div className="flex items-center gap-1.5 sm:gap-2">
@@ -192,7 +192,7 @@ export function ImageComposer({
                   type="button"
                   onClick={() => void onSubmit()}
                   disabled={!prompt.trim() || (mode === "edit" && referenceImages.length === 0)}
-                  className="inline-flex size-10 shrink-0 items-center justify-center rounded-full bg-stone-950 text-white transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-300 sm:size-11"
+                  className="inline-flex size-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm transition-all hover:bg-primary/90 hover:shadow-md disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground/40 disabled:shadow-none sm:size-11"
                   aria-label={mode === "edit" ? "编辑图片" : "生成图片"}
                 >
                   <ArrowUp className="size-4" />
@@ -220,8 +220,10 @@ function ModeButton({
       type="button"
       onClick={onClick}
       className={cn(
-        "rounded-full px-4 py-2 text-sm font-medium transition",
-        active ? "bg-stone-950 text-white" : "bg-stone-100 text-stone-600 hover:bg-stone-200",
+        "rounded-full px-4 py-2 text-sm font-medium transition-all",
+        active
+          ? "bg-primary text-primary-foreground shadow-sm"
+          : "bg-secondary text-muted-foreground hover:bg-secondary/80 hover:text-foreground",
       )}
     >
       {children}

@@ -88,11 +88,11 @@ const statusMeta: Record<
 };
 
 const metricCards = [
-  { key: "total", label: "账户总数", color: "text-stone-900", icon: UserRound },
+  { key: "total", label: "账户总数", color: "text-foreground", icon: UserRound },
   { key: "active", label: "正常账户", color: "text-emerald-600", icon: CheckCircle2 },
   { key: "limited", label: "限流账户", color: "text-orange-500", icon: CircleAlert },
   { key: "abnormal", label: "异常账户", color: "text-rose-500", icon: CircleOff },
-  { key: "disabled", label: "禁用账户", color: "text-stone-500", icon: Ban },
+  { key: "disabled", label: "禁用账户", color: "text-muted-foreground", icon: Ban },
   { key: "quota", label: "剩余额度", color: "text-blue-500", icon: RefreshCw },
 ] as const;
 
@@ -425,16 +425,16 @@ export default function AccountsPage() {
     <>
       <section className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="space-y-1">
-          <div className="text-xs font-semibold tracking-[0.18em] text-stone-500 uppercase">
-            Account Pool
+          <div className="text-xs font-semibold tracking-[0.18em] text-muted-foreground uppercase">
+            号池管理
           </div>
-          <h1 className="text-2xl font-semibold tracking-tight">号池管理</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">号池管理</h1>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
           <Button
             variant="outline"
-            className="h-9 rounded-xl border-stone-200 bg-white/80 px-3 text-stone-700 hover:bg-white sm:h-10 sm:px-4"
+            className="h-9 rounded-xl border-border bg-card px-3 text-muted-foreground hover:bg-secondary sm:h-10 sm:px-4"
             onClick={() => void loadAccounts()}
             disabled={isLoading || isRefreshing || isDeleting}
           >
@@ -443,7 +443,7 @@ export default function AccountsPage() {
           </Button>
           <Button
             variant="outline"
-            className="h-9 rounded-xl border-stone-200 bg-white/80 px-3 text-stone-700 hover:bg-white sm:h-10 sm:px-4"
+            className="h-9 rounded-xl border-border bg-card px-3 text-muted-foreground hover:bg-secondary sm:h-10 sm:px-4"
             onClick={() => void handleRefreshAccounts(accounts.map((item) => item.access_token))}
             disabled={isLoading || isRefreshing || isDeleting || accounts.length === 0}
           >
@@ -461,7 +461,7 @@ export default function AccountsPage() {
           />
           <Button
             variant="outline"
-            className="h-9 rounded-xl border-stone-200 bg-white/80 px-3 text-stone-700 hover:bg-white sm:h-10 sm:px-4"
+            className="h-9 rounded-xl border-border bg-card px-3 text-muted-foreground hover:bg-secondary sm:h-10 sm:px-4"
             onClick={() => downloadTokens(accounts)}
             disabled={accounts.length === 0}
           >
@@ -482,9 +482,9 @@ export default function AccountsPage() {
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium text-stone-700">状态</label>
+              <label className="text-sm font-medium text-foreground">状态</label>
               <Select value={editStatus} onValueChange={(value) => setEditStatus(value as AccountStatus)}>
-                <SelectTrigger className="h-11 rounded-xl border-stone-200 bg-white">
+                <SelectTrigger className="h-11 rounded-xl border-border bg-card">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -499,9 +499,9 @@ export default function AccountsPage() {
               </Select>
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium text-stone-700">类型</label>
+              <label className="text-sm font-medium text-foreground">类型</label>
               <Select value={editType} onValueChange={(value) => setEditType(value as AccountType)}>
-                <SelectTrigger className="h-11 rounded-xl border-stone-200 bg-white">
+                <SelectTrigger className="h-11 rounded-xl border-border bg-card">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -516,44 +516,44 @@ export default function AccountsPage() {
               </Select>
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium text-stone-700">邮箱</label>
+              <label className="text-sm font-medium text-foreground">邮箱</label>
               <Input
                 value={editEmail}
                 onChange={(event) => setEditEmail(event.target.value)}
-                className="h-11 rounded-xl border-stone-200 bg-white"
+                className="h-11 rounded-xl border-border bg-card"
                 placeholder="账号邮箱"
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium text-stone-700">密码</label>
+              <label className="text-sm font-medium text-foreground">密码</label>
               <Input
                 type="password"
                 value={editPassword}
                 onChange={(event) => setEditPassword(event.target.value)}
-                className="h-11 rounded-xl border-stone-200 bg-white"
+                className="h-11 rounded-xl border-border bg-card"
                 placeholder="账号密码 (用于刷新 Token)"
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium text-stone-700">额度</label>
+              <label className="text-sm font-medium text-foreground">额度</label>
               <Input
                 value={editQuota}
                 onChange={(event) => setEditQuota(event.target.value)}
-                className="h-11 rounded-xl border-stone-200 bg-white"
+                className="h-11 rounded-xl border-border bg-card"
               />
             </div>
           </div>
           <DialogFooter className="pt-2">
             <Button
               variant="secondary"
-              className="h-10 rounded-xl bg-stone-100 px-5 text-stone-700 hover:bg-stone-200"
+              className="h-10 rounded-xl bg-secondary px-5 text-muted-foreground hover:bg-secondary/80"
               onClick={() => setEditingAccount(null)}
               disabled={isUpdating}
             >
               取消
             </Button>
             <Button
-              className="h-10 rounded-xl bg-stone-950 px-5 text-white hover:bg-stone-800"
+              className="h-10 rounded-xl bg-primary px-5 text-primary-foreground hover:bg-primary/90"
               onClick={() => void handleUpdateAccount()}
               disabled={isUpdating}
             >
@@ -570,11 +570,11 @@ export default function AccountsPage() {
             const Icon = item.icon;
             const value = summary[item.key];
             return (
-              <Card key={item.key} className="rounded-2xl border-white/80 bg-white/90 shadow-sm">
+              <Card key={item.key} className="rounded-2xl border-border/40 bg-card shadow-sm">
                 <CardContent className="p-3 sm:p-4">
                   <div className="mb-2 flex items-start justify-between sm:mb-4">
-                    <span className="text-[10px] font-medium text-stone-400 sm:text-xs">{item.label}</span>
-                    <Icon className="size-3.5 text-stone-400 sm:size-4" />
+                    <span className="text-[10px] font-medium text-muted-foreground sm:text-xs">{item.label}</span>
+                    <Icon className="size-3.5 text-muted-foreground sm:size-4" />
                   </div>
                   <div className={cn("text-xl font-semibold tracking-tight sm:text-[1.75rem]", item.color)}>
                     <span className={typeof value === "number" ? "" : "text-sm sm:text-[1.1rem]"}>
@@ -592,14 +592,14 @@ export default function AccountsPage() {
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center gap-3">
             <h2 className="text-lg font-semibold tracking-tight">账户列表</h2>
-            <Badge variant="secondary" className="rounded-lg bg-stone-200 px-2 py-0.5 text-stone-700">
+            <Badge variant="secondary" className="rounded-lg bg-secondary px-2 py-0.5 text-muted-foreground">
               {filteredAccounts.length}
             </Badge>
           </div>
 
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:flex-wrap lg:flex-nowrap">
             <div className="relative w-full lg:min-w-[260px]">
-              <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-stone-400" />
+              <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 value={query}
                 onChange={(event) => {
@@ -607,7 +607,7 @@ export default function AccountsPage() {
                   setPage(1);
                 }}
                 placeholder="搜索邮箱"
-                className="h-10 rounded-xl border-stone-200 bg-white/85 pl-10"
+                className="h-10 rounded-xl border-border bg-card pl-10"
               />
             </div>
             <div className="flex gap-2 w-full lg:w-auto">
@@ -618,7 +618,7 @@ export default function AccountsPage() {
                   setPage(1);
                 }}
               >
-                <SelectTrigger className="h-10 flex-1 rounded-xl border-stone-200 bg-white/85 lg:w-[150px]">
+                <SelectTrigger className="h-10 flex-1 rounded-xl border-border bg-card lg:w-[150px]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -636,7 +636,7 @@ export default function AccountsPage() {
                   setPage(1);
                 }}
               >
-                <SelectTrigger className="h-10 flex-1 rounded-xl border-stone-200 bg-white/85 lg:w-[150px]">
+                <SelectTrigger className="h-10 flex-1 rounded-xl border-border bg-card lg:w-[150px]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -652,14 +652,14 @@ export default function AccountsPage() {
         </div>
 
         {isLoading && accounts.length === 0 ? (
-          <Card className="rounded-2xl border-white/80 bg-white/90 shadow-sm">
+          <Card className="rounded-2xl border-border/40 bg-card shadow-sm">
             <CardContent className="flex flex-col items-center justify-center gap-3 px-6 py-14 text-center">
-              <div className="rounded-xl bg-stone-100 p-3 text-stone-500">
+              <div className="rounded-xl bg-secondary p-3 text-muted-foreground">
                 <LoaderCircle className="size-5 animate-spin" />
               </div>
               <div className="space-y-1">
-                <p className="text-sm font-medium text-stone-700">正在加载账户</p>
-                <p className="text-sm text-stone-500">从后端同步账号列表和状态。</p>
+                <p className="text-sm font-medium text-foreground">正在加载账户</p>
+                <p className="text-sm text-muted-foreground">从后端同步账号列表和状态。</p>
               </div>
             </CardContent>
           </Card>
@@ -667,16 +667,16 @@ export default function AccountsPage() {
 
         <Card
           className={cn(
-            "overflow-hidden rounded-2xl border-white/80 bg-white/90 shadow-sm",
+            "overflow-hidden rounded-2xl border-border/40 bg-card shadow-sm",
             isLoading && accounts.length === 0 ? "hidden" : "",
           )}
         >
           <CardContent className="space-y-0 p-0">
-            <div className="flex flex-col gap-3 border-b border-stone-100 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex flex-wrap items-center gap-2 text-sm text-stone-500">
+            <div className="flex flex-col gap-3 border-b border-border/60 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
                 <Button
                   variant="ghost"
-                  className="h-8 rounded-lg px-3 text-stone-500 hover:bg-stone-100"
+                  className="h-8 rounded-lg px-3 text-muted-foreground hover:bg-secondary"
                   onClick={() => void handleRefreshAccounts(selectedTokens)}
                   disabled={selectedTokens.length === 0 || isRefreshing}
                 >
@@ -702,7 +702,7 @@ export default function AccountsPage() {
                   删除所选
                 </Button>
                 {selectedIds.length > 0 ? (
-                  <span className="rounded-lg bg-stone-100 px-2.5 py-1 text-xs font-medium text-stone-600">
+                  <span className="rounded-lg bg-secondary px-2.5 py-1 text-xs font-medium text-muted-foreground">
                     已选择 {selectedIds.length} 项
                   </span>
                 ) : null}
@@ -711,7 +711,7 @@ export default function AccountsPage() {
 
             <div className="overflow-x-auto">
               <table className="w-full min-w-[920px] text-left">
-                <thead className="border-b border-stone-100 text-[11px] text-stone-400 uppercase tracking-[0.18em]">
+                <thead className="border-b border-border/60 text-[11px] text-muted-foreground uppercase tracking-[0.18em]">
                   <tr>
                     <th className="w-12 px-4 py-3">
                       <Checkbox
@@ -745,7 +745,7 @@ export default function AccountsPage() {
                     return (
                       <tr
                         key={account.id}
-                        className="border-b border-stone-100/80 text-sm text-stone-600 transition-colors hover:bg-stone-50/70"
+                        className="border-b border-border/40 text-sm text-muted-foreground transition-colors hover:bg-secondary/50"
                       >
                         <td className="px-4 py-3">
                           <Checkbox
@@ -761,12 +761,12 @@ export default function AccountsPage() {
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2">
-                            <span className="font-medium tracking-tight text-stone-700">
+                            <span className="font-medium tracking-tight text-foreground">
                               {maskToken(account.access_token)}
                             </span>
                             <button
                               type="button"
-                              className="rounded-lg p-1 text-stone-400 transition hover:bg-stone-100 hover:text-stone-700"
+                              className="rounded-lg p-1 text-muted-foreground transition hover:bg-secondary hover:text-foreground"
                               onClick={() => {
                                 void copyToClipboard(account.access_token);
                               }}
@@ -776,7 +776,7 @@ export default function AccountsPage() {
                           </div>
                         </td>
                         <td className="px-4 py-3">
-                          <Badge variant="secondary" className="rounded-md bg-stone-100 text-stone-700">
+                          <Badge variant="secondary" className="rounded-md bg-secondary text-muted-foreground">
                             {account.type}
                           </Badge>
                         </td>
@@ -790,31 +790,31 @@ export default function AccountsPage() {
                           </Badge>
                         </td>
                         <td className="px-4 py-3">
-                          <div className="text-xs leading-5 text-stone-900 font-medium">{account.email ?? "—"}</div>
+                          <div className="text-xs leading-5 text-foreground font-medium">{account.email ?? "—"}</div>
                         </td>
                         <td className="px-4 py-3">
                           <Badge variant="info" className="rounded-md">
                             {formatQuota(account)}
                           </Badge>
                         </td>
-                        <td className="px-4 py-3 text-xs leading-5 text-stone-500">
+                        <td className="px-4 py-3 text-xs leading-5 text-muted-foreground">
                           {(() => {
                             const restore = formatRestoreAt(account.restoreAt);
                             return (
                               <div className="space-y-0.5">
-                                {restore.relative ? <div className="font-medium text-stone-700">{restore.relative}</div> : null}
+                                {restore.relative ? <div className="font-medium text-foreground">{restore.relative}</div> : null}
                                 <div>{restore.absolute}</div>
                               </div>
                             );
                           })()}
                         </td>
-                        <td className="px-4 py-3 text-stone-500">{account.success}</td>
-                        <td className="px-4 py-3 text-stone-500">{account.fail}</td>
+                        <td className="px-4 py-3 text-muted-foreground">{account.success}</td>
+                        <td className="px-4 py-3 text-muted-foreground">{account.fail}</td>
                         <td className="px-4 py-3">
-                          <div className="flex items-center gap-1 text-stone-400">
+                          <div className="flex items-center gap-1 text-muted-foreground">
                             <button
                               type="button"
-                              className="rounded-lg p-2 transition hover:bg-stone-100 hover:text-stone-700"
+                              className="rounded-lg p-2 transition hover:bg-secondary hover:text-foreground"
                               onClick={() => openEditDialog(account)}
                               disabled={isUpdating}
                             >
@@ -822,7 +822,7 @@ export default function AccountsPage() {
                             </button>
                             <button
                               type="button"
-                              className="rounded-lg p-2 transition hover:bg-stone-100 hover:text-stone-700"
+                              className="rounded-lg p-2 transition hover:bg-secondary hover:text-foreground"
                               onClick={() => void handleRelinkAccount(account.access_token)}
                               disabled={Boolean(isRelinking) || !account.email || !account.password}
                               title="重新登录刷新 Token"
@@ -831,7 +831,7 @@ export default function AccountsPage() {
                             </button>
                             <button
                               type="button"
-                              className="rounded-lg p-2 transition hover:bg-stone-100 hover:text-stone-700"
+                              className="rounded-lg p-2 transition hover:bg-secondary hover:text-foreground"
                               onClick={() => void handleRefreshAccounts([account.access_token])}
                               disabled={isRefreshing}
                             >
@@ -855,26 +855,26 @@ export default function AccountsPage() {
 
               {!isLoading && currentRows.length === 0 ? (
                 <div className="flex flex-col items-center justify-center gap-3 px-6 py-14 text-center">
-                  <div className="rounded-xl bg-stone-100 p-3 text-stone-500">
+                  <div className="rounded-xl bg-secondary p-3 text-muted-foreground">
                     <Search className="size-5" />
                   </div>
                   <div className="space-y-1">
-                    <p className="text-sm font-medium text-stone-700">没有匹配的账户</p>
-                    <p className="text-sm text-stone-500">调整筛选条件或搜索关键字后重试。</p>
+                    <p className="text-sm font-medium text-foreground">没有匹配的账户</p>
+                    <p className="text-sm text-muted-foreground">调整筛选条件或搜索关键字后重试。</p>
                   </div>
                 </div>
               ) : null}
             </div>
 
-            <div className="border-t border-stone-100 px-4 py-4">
+            <div className="border-t border-border/60 px-4 py-4">
               <div className="flex items-center justify-center gap-3 overflow-x-auto whitespace-nowrap">
-                <div className="shrink-0 text-sm text-stone-500">
+                <div className="shrink-0 text-sm text-muted-foreground">
                   显示第 {filteredAccounts.length === 0 ? 0 : startIndex + 1} -{" "}
                   {Math.min(startIndex + Number(pageSize), filteredAccounts.length)} 条，共{" "}
                   {filteredAccounts.length} 条
                 </div>
 
-                <span className="shrink-0 text-sm leading-none text-stone-500">
+                <span className="shrink-0 text-sm leading-none text-muted-foreground">
                   {safePage} / {pageCount} 页
                 </span>
                 <Select
@@ -884,7 +884,7 @@ export default function AccountsPage() {
                     setPage(1);
                   }}
                 >
-                  <SelectTrigger className="h-10 w-[108px] shrink-0 rounded-lg border-stone-200 bg-white text-sm leading-none">
+                  <SelectTrigger className="h-10 w-[108px] shrink-0 rounded-lg border-border bg-card text-sm leading-none">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -897,7 +897,7 @@ export default function AccountsPage() {
                 <Button
                   variant="outline"
                   size="icon"
-                  className="size-10 shrink-0 rounded-lg border-stone-200 bg-white"
+                  className="size-10 shrink-0 rounded-lg border-border bg-card"
                   disabled={safePage <= 1}
                   onClick={() => setPage((prev) => Math.max(1, prev - 1))}
                 >
@@ -905,7 +905,7 @@ export default function AccountsPage() {
                 </Button>
                 {paginationItems.map((item, index) =>
                   item === "..." ? (
-                    <span key={`ellipsis-${index}`} className="px-1 text-sm text-stone-400">
+                    <span key={`ellipsis-${index}`} className="px-1 text-sm text-muted-foreground">
                       ...
                     </span>
                   ) : (
@@ -915,8 +915,8 @@ export default function AccountsPage() {
                       className={cn(
                         "h-10 min-w-10 shrink-0 rounded-lg px-3",
                         item === safePage
-                          ? "bg-stone-950 text-white hover:bg-stone-800"
-                          : "border-stone-200 bg-white text-stone-700",
+                          ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                          : "border-border bg-card text-muted-foreground",
                       )}
                       onClick={() => setPage(item)}
                     >
@@ -927,7 +927,7 @@ export default function AccountsPage() {
                 <Button
                   variant="outline"
                   size="icon"
-                  className="size-10 shrink-0 rounded-lg border-stone-200 bg-white"
+                  className="size-10 shrink-0 rounded-lg border-border bg-card"
                   disabled={safePage >= pageCount}
                   onClick={() => setPage((prev) => Math.min(pageCount, prev + 1))}
                 >

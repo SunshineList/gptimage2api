@@ -73,7 +73,7 @@ export function TopNav() {
                 <span className="mb-1 size-1 rounded-full bg-primary" />
               </div>
               <span className="text-[9px] font-medium tracking-[0.25em] text-muted-foreground uppercase leading-none">
-                Inspired Painting
+                灵感绘境
               </span>
             </div>
           </Link>
@@ -138,7 +138,7 @@ export function TopNav() {
 
       {/* Mobile Navigation Menu */}
       {isMenuOpen && (
-        <div className="fixed inset-0 top-14 z-40 bg-white/95 backdrop-blur-md md:hidden">
+        <div className="fixed inset-0 top-14 z-40 bg-background/95 backdrop-blur-md md:hidden">
           <nav className="flex max-h-[calc(100vh-3.5rem)] flex-col overflow-y-auto p-6 pb-12">
             {me?.role === "user" && (
               <div className="mb-6 rounded-2xl bg-secondary p-4">

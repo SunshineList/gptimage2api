@@ -547,23 +547,26 @@ export default function ImagePage() {
           return;
         }
 
-        const tasks = pendingImages.map(async (pendingImage) => {
-          try {
-            const data =
-              queuedTurn.mode === "edit"
-                ? await editImage(referenceFiles, queuedTurn.prompt)
-                : await generateImage(queuedTurn.prompt);
-            const first = data.data?.[0];
-            if (!first?.b64_json) {
-              throw new Error("未返回图片数据");
-            }
+        // 单次 API 调用生成所有图片，避免离开页面后中断
+        const data =
+          queuedTurn.mode === "edit"
+            ? await editImage(referenceFiles, queuedTurn.prompt, undefined, pendingImages.length)
+            : await generateImage(queuedTurn.prompt, undefined, pendingImages.length);
 
+        const results = data.data || [];
+        let successCount = 0;
+        let failedCount = 0;
+
+        for (let i = 0; i < pendingImages.length; i++) {
+          const pendingImage = pendingImages[i];
+          const result = results[i];
+          if (result?.b64_json) {
+            successCount += 1;
             const nextImage: StoredImage = {
               id: pendingImage.id,
               status: "success",
-              b64_json: first.b64_json,
+              b64_json: result.b64_json,
             };
-
             await updateConversation(
               conversationId,
               (current) => {
@@ -583,16 +586,13 @@ export default function ImagePage() {
               },
               { persist: false },
             );
-
-            return nextImage;
-          } catch (error) {
-            const message = error instanceof Error ? error.message : "生成失败";
+          } else {
+            failedCount += 1;
             const failedImage: StoredImage = {
               id: pendingImage.id,
               status: "error",
-              error: message,
+              error: "未返回图片数据",
             };
-
             await updateConversation(
               conversationId,
               (current) => {
@@ -612,20 +612,13 @@ export default function ImagePage() {
               },
               { persist: false },
             );
-
-            throw error;
           }
-        });
+        }
 
-        const settled = await Promise.allSettled(tasks);
-        const resumedSuccessCount = settled.filter(
-          (item): item is PromiseFulfilledResult<StoredImage> => item.status === "fulfilled",
-        ).length;
-        const resumedFailedCount = settled.length - resumedSuccessCount;
         const existingSuccessCount = queuedTurn.images.filter((image) => image.status === "success").length;
         const existingFailedCount = queuedTurn.images.filter((image) => image.status === "error").length;
-        const successCount = existingSuccessCount + resumedSuccessCount;
-        const failedCount = existingFailedCount + resumedFailedCount;
+        const totalSuccess = existingSuccessCount + successCount;
+        const totalFailed = existingFailedCount + failedCount;
 
         await updateConversation(conversationId, (current) => {
           const conversation = current ?? snapshot;
@@ -636,8 +629,8 @@ export default function ImagePage() {
               turn.id === queuedTurn.id
                 ? {
                   ...turn,
-                  status: failedCount > 0 ? "error" : "success",
-                  error: failedCount > 0 ? `其中 ${failedCount} 张未成功生成` : undefined,
+                  status: totalFailed > 0 && totalSuccess === 0 ? "error" : "success",
+                  error: totalFailed > 0 ? `其中 ${totalFailed} 张未成功生成` : undefined,
                 }
                 : turn,
             ),
@@ -760,15 +753,15 @@ export default function ImagePage() {
     <>
       <section className="mx-auto grid h-[calc(100vh-5.5rem)] min-h-0 w-full max-w-[1380px] grid-cols-1 gap-3 px-1 pb-4 sm:px-3 sm:pb-6 lg:h-[calc(100vh-5rem)] lg:grid-cols-[240px_minmax(0,1fr)]">
         <div className={cn(
-          "fixed inset-0 z-[100] bg-white transition-all lg:relative lg:inset-auto lg:z-0 lg:block lg:bg-transparent",
+          "fixed inset-0 z-[100] bg-background transition-all lg:relative lg:inset-auto lg:z-0 lg:block lg:bg-transparent",
           isSidebarOpen ? "block" : "hidden"
         )}>
           <div className="flex h-full flex-col px-4 pt-6 lg:p-0">
             <div className="mb-4 flex items-center justify-between lg:hidden">
-              <span className="text-lg font-bold">历史对话</span>
+              <span className="text-lg font-bold text-foreground">历史对话</span>
               <button
                 type="button"
-                className="flex size-9 items-center justify-center rounded-xl bg-stone-100 text-stone-600"
+                className="flex size-9 items-center justify-center rounded-xl bg-secondary text-muted-foreground"
                 onClick={() => setIsSidebarOpen(false)}
               >
                 <X className="size-5" />
@@ -791,14 +784,14 @@ export default function ImagePage() {
           <div className="flex items-center gap-2 lg:hidden">
             <button
               type="button"
-              className="flex h-10 items-center gap-2 rounded-xl bg-white px-4 text-sm font-medium text-stone-600 shadow-sm border border-stone-100"
+              className="flex h-10 items-center gap-2 rounded-xl bg-card px-4 text-sm font-medium text-muted-foreground shadow-sm border border-border/60 transition hover:bg-secondary hover:text-foreground"
               onClick={() => setIsSidebarOpen(true)}
             >
               <MessageSquarePlus className="size-4" />
               历史记录
             </button>
             {selectedConversation && (
-              <div className="truncate text-sm font-semibold text-stone-900">
+              <div className="truncate text-sm font-semibold text-foreground">
                 {selectedConversation.title}
               </div>
             )}

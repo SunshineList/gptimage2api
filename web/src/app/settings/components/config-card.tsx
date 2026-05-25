@@ -48,40 +48,40 @@ export function ConfigCard() {
 
   if (isLoadingConfig) {
     return (
-      <Card className="rounded-2xl border-white/80 bg-white/90 shadow-sm">
+      <Card className="rounded-2xl border-border/40 bg-card shadow-sm">
         <CardContent className="flex items-center justify-center p-10">
-          <LoaderCircle className="size-5 animate-spin text-stone-400" />
+          <LoaderCircle className="size-5 animate-spin text-muted-foreground" />
         </CardContent>
       </Card>
     );
   }
 
   return (
-    <Card className="rounded-2xl border-white/80 bg-white/90 shadow-sm">
+    <Card className="rounded-2xl border-border/40 bg-card shadow-sm">
       <CardContent className="space-y-4 p-6">
         <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-2">
-            <label className="text-sm text-stone-700">登录密钥</label>
+            <label className="text-sm text-foreground">登录密钥</label>
             <Input
               value={String(config?.["auth-key"] || "")}
               onChange={(event) => setAuthKey(event.target.value)}
-              placeholder="auth-key"
-              className="h-10 rounded-xl border-stone-200 bg-white"
+              placeholder="请输入登录密钥"
+              className="h-10 rounded-xl border-border bg-card"
             />
-            <p className="text-xs text-stone-500">用于后台登录验证。</p>
+            <p className="text-xs text-muted-foreground">用于后台登录验证。</p>
           </div>
           <div className="space-y-2">
-            <label className="text-sm text-stone-700">账号刷新间隔</label>
+            <label className="text-sm text-foreground">账号刷新间隔</label>
             <Input
               value={String(config?.refresh_account_interval_minute || "")}
               onChange={(event) => setRefreshAccountIntervalMinute(event.target.value)}
               placeholder="分钟"
-              className="h-10 rounded-xl border-stone-200 bg-white"
+              className="h-10 rounded-xl border-border bg-card"
             />
-            <p className="text-xs text-stone-500">单位分钟，控制账号自动刷新频率。</p>
+            <p className="text-xs text-muted-foreground">单位分钟，控制账号自动刷新频率。</p>
           </div>
           <div className="space-y-2">
-            <label className="text-sm text-stone-700">全局代理</label>
+            <label className="text-sm text-foreground">全局代理</label>
             <Input
               value={String(config?.proxy || "")}
               onChange={(event) => {
@@ -89,9 +89,9 @@ export function ConfigCard() {
                 setProxyTestResult(null);
               }}
               placeholder="http://127.0.0.1:7890"
-              className="h-10 rounded-xl border-stone-200 bg-white"
+              className="h-10 rounded-xl border-border bg-card"
             />
-            <p className="text-xs text-stone-500">留空表示不使用代理。</p>
+            <p className="text-xs text-muted-foreground">留空表示不使用代理。</p>
             {proxyTestResult ? (
               <div
                 className={`rounded-xl border px-3 py-2 text-xs leading-6 ${
@@ -109,7 +109,7 @@ export function ConfigCard() {
               <Button
                 type="button"
                 variant="outline"
-                className="h-9 rounded-xl border-stone-200 bg-white px-4 text-stone-700"
+                className="h-9 rounded-xl border-border bg-card px-4 text-muted-foreground"
                 onClick={() => void handleTestProxy()}
                 disabled={isTestingProxy}
               >
@@ -119,20 +119,20 @@ export function ConfigCard() {
             </div>
           </div>
           <div className="space-y-2">
-            <label className="text-sm text-stone-700">图片访问地址</label>
+            <label className="text-sm text-foreground">图片访问地址</label>
             <Input
               value={String(config?.base_url || "")}
               onChange={(event) => setBaseUrl(event.target.value)}
               placeholder="https://example.com"
-              className="h-10 rounded-xl border-stone-200 bg-white"
+              className="h-10 rounded-xl border-border bg-card"
             />
-            <p className="text-xs text-stone-500">用于生成图片结果的访问前缀地址。</p>
+            <p className="text-xs text-muted-foreground">用于生成图片结果的访问前缀地址。</p>
           </div>
         </div>
 
         <div className="flex justify-end">
           <Button
-            className="h-10 rounded-xl bg-stone-950 px-5 text-white hover:bg-stone-800"
+            className="h-10 rounded-xl bg-primary px-5 text-primary-foreground hover:bg-primary/90"
             onClick={() => void saveConfig()}
             disabled={isSavingConfig}
           >

@@ -27,16 +27,19 @@ export function ImageResults({
     return (
       <div className="flex h-full min-h-[420px] items-center justify-center text-center">
         <div className="w-full max-w-4xl">
+          <div className="mx-auto mb-8 flex size-20 items-center justify-center rounded-3xl bg-gradient-to-br from-primary/10 via-accent to-primary/5 shadow-sm">
+            <Sparkles className="size-8 text-primary/60" />
+          </div>
           <h1
-            className="text-3xl font-semibold tracking-tight text-stone-950 md:text-5xl"
+            className="text-3xl font-semibold tracking-tight text-foreground md:text-5xl"
             style={{
               fontFamily: '"Palatino Linotype","Book Antiqua","URW Palladio L","Times New Roman",serif',
             }}
           >
-            Turn ideas into images
+            将想法变为图像
           </h1>
           <p
-            className="mt-4 text-[15px] italic tracking-[0.01em] text-stone-500"
+            className="mt-4 text-[15px] italic tracking-[0.01em] text-muted-foreground"
             style={{
               fontFamily: '"Palatino Linotype","Book Antiqua","URW Palladio L","Times New Roman",serif',
             }}
@@ -64,8 +67,8 @@ export function ImageResults({
         return (
           <div key={turn.id} className="flex flex-col gap-4">
             <div className="flex justify-end">
-              <div className="max-w-[82%] px-1 py-1 text-[15px] leading-7 text-stone-900">
-                <div className="mb-2 flex flex-wrap justify-end gap-2 text-[11px] text-stone-400">
+              <div className="max-w-[82%] px-1 py-1 text-[15px] leading-7 text-foreground">
+                <div className="mb-2 flex flex-wrap justify-end gap-2 text-[11px] text-muted-foreground">
                   <span>第 {turnIndex + 1} 轮</span>
                   <span>
                     {turn.mode === "edit" ? "编辑图" : "文生图"}
@@ -81,26 +84,26 @@ export function ImageResults({
               <div className="w-full p-1">
                 {turn.referenceImages.length > 0 ? (
                   <div className="mb-4 flex flex-col items-end">
-                    <div className="mb-3 text-xs font-medium text-stone-500">本轮参考图</div>
+                    <div className="mb-3 text-xs font-medium text-muted-foreground">本轮参考图</div>
                     <div className="flex flex-wrap justify-end gap-3">
                       {turn.referenceImages.map((image, index) => (
                         <div key={`${turn.id}-${image.name}-${index}`} className="flex flex-col items-end gap-2">
                           <button
                             type="button"
                             onClick={() => onOpenLightbox(referenceLightboxImages, index)}
-                            className="group relative h-24 w-24 overflow-hidden border border-stone-200/80 bg-stone-100/60 text-left transition hover:border-stone-300"
+                            className="group relative h-24 w-24 overflow-hidden rounded-xl border border-border/60 bg-secondary text-left shadow-sm transition hover:shadow-md hover:scale-[1.02]"
                             aria-label={`预览参考图 ${image.name || index + 1}`}
                           >
                             <img
                               src={image.dataUrl}
                               alt={image.name || `参考图 ${index + 1}`}
-                              className="absolute inset-0 h-full w-full object-cover transition duration-200 group-hover:scale-[1.02]"
+                              className="absolute inset-0 h-full w-full object-cover transition duration-300 group-hover:scale-105"
                             />
                           </button>
                           <Button
                             variant="outline"
                             size="sm"
-                            className="rounded-full border-stone-200 bg-white text-stone-700 hover:bg-stone-50"
+                            className="rounded-full border-border/80 bg-card text-foreground/70 shadow-sm transition hover:bg-secondary hover:text-foreground"
                             onClick={() => onContinueEdit(selectedConversation.id, image)}
                           >
                             <Sparkles className="size-4" />
@@ -112,9 +115,9 @@ export function ImageResults({
                   </div>
                 ) : null}
 
-                <div className="mb-4 flex flex-wrap items-center gap-2 text-xs text-stone-500">
-                  <span className="rounded-full bg-stone-100 px-3 py-1">{turn.count} 张</span>
-                  <span className="rounded-full bg-stone-100 px-3 py-1">{getTurnStatusLabel(turn.status)}</span>
+                <div className="mb-4 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                  <span className="rounded-full bg-secondary px-3 py-1">{turn.count} 张</span>
+                  <span className="rounded-full bg-secondary px-3 py-1">{getTurnStatusLabel(turn.status)}</span>
                   {turn.status === "queued" ? (
                     <span className="rounded-full bg-amber-50 px-3 py-1 text-amber-700">等待当前对话中的前序任务完成</span>
                   ) : null}
@@ -128,7 +131,7 @@ export function ImageResults({
                       return (
                         <div
                           key={image.id}
-                          className="break-inside-avoid overflow-hidden"
+                          className="break-inside-avoid overflow-hidden rounded-2xl border border-border/40 bg-card shadow-sm transition-shadow hover:shadow-md"
                         >
                           <button
                             type="button"
@@ -137,16 +140,16 @@ export function ImageResults({
                           >
                             <img
                               src={`data:image/png;base64,${image.b64_json}`}
-                              alt={`Generated result ${index + 1}`}
-                              className="block h-auto w-full transition duration-200 group-hover:brightness-90"
+                              alt={`生成结果 ${index + 1}`}
+                              className="block h-auto w-full transition duration-300 group-hover:brightness-95"
                             />
                           </button>
-                          <div className="flex items-center justify-between gap-2 px-3 py-3">
-                            <div className="text-xs text-stone-500">结果 {index + 1}</div>
+                          <div className="flex items-center justify-between gap-2 border-t border-border/30 bg-secondary/50 px-3 py-3">
+                            <div className="text-xs text-muted-foreground">结果 {index + 1}</div>
                             <Button
                               variant="outline"
                               size="sm"
-                              className="rounded-full border-stone-200 bg-white text-stone-700 hover:bg-stone-50"
+                              className="rounded-full border-border/80 bg-card text-foreground/70 shadow-sm transition hover:bg-secondary hover:text-foreground"
                               onClick={() => onContinueEdit(selectedConversation.id, image)}
                             >
                               <Sparkles className="size-4" />
@@ -161,9 +164,9 @@ export function ImageResults({
                       return (
                         <div
                           key={image.id}
-                          className="break-inside-avoid overflow-hidden border border-rose-200 bg-rose-50"
+                          className="break-inside-avoid overflow-hidden rounded-2xl border border-destructive/20 bg-destructive/5"
                         >
-                          <div className="flex min-h-[320px] items-center justify-center px-6 py-8 text-center text-sm leading-6 text-rose-600">
+                          <div className="flex min-h-[320px] items-center justify-center px-6 py-8 text-center text-sm leading-6 text-destructive/70">
                             {image.error || "生成失败"}
                           </div>
                         </div>
@@ -173,10 +176,10 @@ export function ImageResults({
                     return (
                       <div
                         key={image.id}
-                        className="break-inside-avoid overflow-hidden border border-stone-200/80 bg-stone-100/80"
+                        className="break-inside-avoid overflow-hidden rounded-2xl border border-border/40 bg-secondary/50"
                       >
-                        <div className="flex min-h-[320px] flex-col items-center justify-center gap-3 px-6 py-8 text-center text-stone-500">
-                          <div className="rounded-full bg-white p-3 shadow-sm">
+                        <div className="flex min-h-[320px] flex-col items-center justify-center gap-3 px-6 py-8 text-center text-muted-foreground">
+                          <div className="rounded-2xl bg-card p-3 shadow-sm">
                             {turn.status === "queued" ? (
                               <Clock3 className="size-5" />
                             ) : (

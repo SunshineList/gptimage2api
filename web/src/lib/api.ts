@@ -123,7 +123,7 @@ export async function relinkAccount(accessToken: string) {
   });
 }
 
-export async function generateImage(prompt: string, model?: ImageModel) {
+export async function generateImage(prompt: string, model?: ImageModel, n: number = 1) {
   return httpRequest<{ created: number; data: Array<{ b64_json: string; revised_prompt?: string }> }>(
     "/v1/images/generations",
     {
@@ -131,14 +131,14 @@ export async function generateImage(prompt: string, model?: ImageModel) {
       body: {
         prompt,
         ...(model ? { model } : {}),
-        n: 1,
+        n,
         response_format: "b64_json",
       },
     },
   );
 }
 
-export async function editImage(files: File | File[], prompt: string, model?: ImageModel) {
+export async function editImage(files: File | File[], prompt: string, model?: ImageModel, n: number = 1) {
   const formData = new FormData();
   const uploadFiles = Array.isArray(files) ? files : [files];
 
@@ -149,7 +149,7 @@ export async function editImage(files: File | File[], prompt: string, model?: Im
   if (model) {
     formData.append("model", model);
   }
-  formData.append("n", "1");
+  formData.append("n", String(n));
 
   return httpRequest<{ created: number; data: Array<{ b64_json: string; revised_prompt?: string }> }>(
     "/v1/images/edits",
