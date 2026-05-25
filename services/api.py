@@ -144,6 +144,7 @@ class ProxyTestRequest(BaseModel):
 class UserCreateRequest(BaseModel):
     name: str
     quota: int = -1
+    key: str = ""
 
 
 class UserUpdateRequest(BaseModel):
@@ -589,7 +590,10 @@ def create_app() -> FastAPI:
 
     @router.post("/api/users")
     async def create_user(body: UserCreateRequest, admin: dict = Depends(get_admin_auth)):
-        return user_service.create_user(body.name, body.quota)
+        try:
+            return user_service.create_user(body.name, body.quota, body.key)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail={"error": str(e)})
 
     @router.get("/api/users")
     async def list_users(admin: dict = Depends(get_admin_auth)):

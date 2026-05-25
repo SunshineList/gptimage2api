@@ -385,10 +385,10 @@ export async function fetchUsers() {
   return httpRequest<{ items: User[] }>("/api/users");
 }
 
-export async function createUser(name: string, quota: number) {
+export async function createUser(name: string, quota: number, key?: string) {
   return httpRequest<User>("/api/users", {
     method: "POST",
-    body: { name, quota },
+    body: { name, quota, key: key || "" },
   });
 }
 

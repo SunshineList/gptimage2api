@@ -38,9 +38,14 @@ class UserService:
         alphabet = string.ascii_letters + string.digits
         return "sk-" + "".join(secrets.choice(alphabet) for _ in range(length))
 
-    def create_user(self, name: str, quota: int) -> dict:
+    def create_user(self, name: str, quota: int, key: str = "") -> dict:
         with self._lock:
-            key = self.generate_key()
+            if key:
+                key = key.strip()
+                if any(u.get("key") == key for u in self._users):
+                    raise ValueError(f"Key 已存在: {key}")
+            else:
+                key = self.generate_key()
             user = {
                 "key": key,
                 "name": name,

@@ -20,6 +20,7 @@ export default function UsersPage() {
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [newUserName, setNewUserName] = useState("");
+  const [newUserKey, setNewUserKey] = useState("");
   const [newUserQuota, setNewUserQuota] = useState("-1");
   
   const [editingUser, setEditingUser] = useState<User | null>(null);
@@ -77,10 +78,11 @@ export default function UsersPage() {
     }
     setIsCreating(true);
     try {
-      await createUser(newUserName, Number(newUserQuota));
+      await createUser(newUserName, Number(newUserQuota), newUserKey.trim() || undefined);
       toast.success("用户创建成功");
       setShowAddDialog(false);
       setNewUserName("");
+      setNewUserKey("");
       setNewUserQuota("-1");
       void loadUsers();
     } catch (error) {
@@ -171,6 +173,18 @@ export default function UsersPage() {
                 placeholder="例如：张三"
                 value={newUserName}
                 onChange={e => setNewUserName(e.target.value)}
+                className="rounded-xl border-border"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">
+                API Key
+                <span className="ml-1 text-xs font-normal text-muted-foreground">（留空自动生成 sk- 前缀随机 Key）</span>
+              </label>
+              <Input
+                placeholder="自定义 Key，留空则自动生成"
+                value={newUserKey}
+                onChange={e => setNewUserKey(e.target.value)}
                 className="rounded-xl border-border"
               />
             </div>
