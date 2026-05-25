@@ -30,6 +30,7 @@ from services.stats_service import stats_service
 from services.image_history_service import image_history_service
 from services.plaza_service import plaza_service
 from services.conversation_service import conversation_service
+import base64
 import secrets
 
 BASE_DIR = Path(__file__).resolve().parents[1]
@@ -145,12 +146,14 @@ class UserCreateRequest(BaseModel):
     name: str
     quota: int = -1
     key: str = ""
+    role: str = "user"
 
 
 class UserUpdateRequest(BaseModel):
     name: str | None = None
     quota: int | None = None
     status: str | None = None
+    role: str | None = None
 
 class SessionCreateRequest(BaseModel):
     key: str
@@ -216,7 +219,7 @@ def get_auth_info(authorization: str | None) -> dict | None:
     # 2. 检查是否为原始 User Key
     user = user_service.get_user(token)
     if user and user.get("status") == "active":
-        return {"role": "user", "key": token, "user": user}
+        return {"role": user.get("role", "user"), "key": token, "user": user}
 
     # 3. 检查是否为 Session ID
     session = user_service.get_session(token)
@@ -226,7 +229,7 @@ def get_auth_info(authorization: str | None) -> dict | None:
             return {"role": "admin", "key": real_key}
         user = user_service.get_user(real_key)
         if user and user.get("status") == "active":
-            return {"role": "user", "key": real_key, "user": user}
+            return {"role": user.get("role", "user"), "key": real_key, "user": user}
 
     return None
 
@@ -242,6 +245,12 @@ async def get_active_auth(authorization: str | None = Header(default=None)) -> d
 async def get_admin_auth(auth: dict = Depends(get_active_auth)) -> dict:
     if auth["role"] != "admin":
         raise HTTPException(status_code=403, detail={"error": "需要管理员权限"})
+    return auth
+
+
+async def get_operator_auth(auth: dict = Depends(get_active_auth)) -> dict:
+    if auth["role"] not in ("admin", "operator"):
+        raise HTTPException(status_code=403, detail={"error": "需要运营或管理员权限"})
     return auth
 
 
@@ -344,7 +353,7 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=401, detail={"error": "无效的 Key"})
         
         session_id = user_service.create_session(body.key)
-        return {"session_id": session_id, "role": "user"}
+        return {"session_id": session_id, "role": user.get("role", "user")}
 
     @router.get("/api/auth/session/{session_id}")
     async def get_session(session_id: str):
@@ -359,11 +368,15 @@ def create_app() -> FastAPI:
 
     @router.get("/api/me")
     async def get_me(auth: dict = Depends(get_active_auth)):
+        role = auth["role"]
+        is_admin = role == "admin"
+        is_non_user = role in ("admin", "operator")
+        user_data = auth.get("user", {})
         return {
-            "role": auth["role"],
-            "name": auth.get("user", {}).get("name") if auth["role"] == "user" else "管理员",
-            "quota": auth.get("user", {}).get("quota") if auth["role"] == "user" else -1,
-            "used": auth.get("user", {}).get("used") if auth["role"] == "user" else 0
+            "role": role,
+            "name": user_data.get("name") if user_data.get("name") else ("管理员" if is_admin else "运营"),
+            "quota": user_data.get("quota") if not is_non_user else -1,
+            "used": user_data.get("used") if not is_non_user else 0
         }
 
     @router.get("/api/settings")
@@ -500,19 +513,20 @@ def create_app() -> FastAPI:
                 user_service.use_quota(auth["key"])
             
             stats_service.record_success()
-            
-            # 自动保存到历史 (如果用户已登录)
-            if auth["role"] == "user":
-                image_data = result.get("data", [])
-                for item in image_data:
-                    if isinstance(item, dict) and item.get("b64_json"):
-                        image_history_service.save_image(
-                            auth["key"], 
-                            body.prompt, 
-                            f"data:image/png;base64,{item.get('b64_json')}", 
-                            body.model
-                        )
-            
+
+            # 自动保存到历史（所有已认证用户，含管理员）
+            image_data = result.get("data", [])
+            for item in image_data:
+                if isinstance(item, dict) and item.get("b64_json"):
+                    image_id = image_history_service.save_image(
+                        auth["key"],
+                        body.prompt,
+                        f"data:image/png;base64,{item.get('b64_json')}",
+                        body.model,
+                        type="generate",
+                    )
+                    item["image_id"] = image_id
+
             return result
         except ImageGenerationError as exc:
             stats_service.record_fail()
@@ -541,6 +555,7 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=400, detail={"error": "缺少图片文件"})
 
         images: list[tuple[bytes, str, str]] = []
+        reference_data_urls: list[str] = []
         for upload in uploads:
             image_data = await upload.read()
             if not image_data:
@@ -549,6 +564,8 @@ def create_app() -> FastAPI:
             file_name = upload.filename or "image.png"
             mime_type = upload.content_type or "image/png"
             images.append((image_data, file_name, mime_type))
+            ref_b64 = base64.b64encode(image_data).decode("utf-8")
+            reference_data_urls.append(f"data:{mime_type};base64,{ref_b64}")
 
         try:
             result = await run_in_threadpool(
@@ -558,8 +575,23 @@ def create_app() -> FastAPI:
             # 只有成功后才扣除额度
             if auth["role"] == "user":
                 user_service.use_quota(auth["key"])
-                
+
             stats_service.record_success()
+
+            # 自动保存编辑结果到历史（含参考图）
+            image_data = result.get("data", [])
+            for item in image_data:
+                if isinstance(item, dict) and item.get("b64_json"):
+                    image_id = image_history_service.save_image(
+                        auth["key"],
+                        prompt,
+                        f"data:image/png;base64,{item.get('b64_json')}",
+                        model,
+                        type="edit",
+                        reference_image_urls=reference_data_urls,
+                    )
+                    item["image_id"] = image_id
+
             return result
         except ImageGenerationError as exc:
             stats_service.record_fail()
@@ -589,31 +621,49 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=502, detail={"error": str(exc)}) from exc
 
     @router.post("/api/users")
-    async def create_user(body: UserCreateRequest, admin: dict = Depends(get_admin_auth)):
+    async def create_user(body: UserCreateRequest, auth: dict = Depends(get_operator_auth)):
+        # 运营人员只能创建普通用户，不能创建管理员或其他运营
+        if auth["role"] == "operator" and body.role not in ("user", ""):
+            raise HTTPException(status_code=403, detail={"error": "运营人员只能创建普通用户"})
         try:
-            return user_service.create_user(body.name, body.quota, body.key)
+            return user_service.create_user(body.name, body.quota, body.key, body.role or "user")
         except ValueError as e:
             raise HTTPException(status_code=400, detail={"error": str(e)})
 
     @router.get("/api/users")
-    async def list_users(admin: dict = Depends(get_admin_auth)):
+    async def list_users(auth: dict = Depends(get_operator_auth)):
         return {"items": user_service.list_users()}
 
     @router.delete("/api/users/{key}")
-    async def delete_user(key: str, admin: dict = Depends(get_admin_auth)):
+    async def delete_user(key: str, auth: dict = Depends(get_operator_auth)):
+        # 运营人员不能删除管理员或其他运营
+        target = user_service.get_user(key)
+        if not target:
+            raise HTTPException(status_code=404, detail={"error": "用户不存在"})
+        if auth["role"] == "operator" and target.get("role") in ("admin", "operator"):
+            raise HTTPException(status_code=403, detail={"error": "运营人员不能删除管理员或其他运营"})
         if user_service.delete_user(key):
             return {"ok": True}
         raise HTTPException(status_code=404, detail={"error": "用户不存在"})
 
     @router.post("/api/users/{key}")
-    async def update_user(key: str, body: UserUpdateRequest, admin: dict = Depends(get_admin_auth)):
+    async def update_user(key: str, body: UserUpdateRequest, auth: dict = Depends(get_operator_auth)):
+        target = user_service.get_user(key)
+        if not target:
+            raise HTTPException(status_code=404, detail={"error": "用户不存在"})
+        # 运营人员不能修改管理员，也不能把别人设为管理员/运营
+        if auth["role"] == "operator":
+            if target.get("role") in ("admin",):
+                raise HTTPException(status_code=403, detail={"error": "运营人员不能修改管理员"})
+            if body.role in ("admin", "operator"):
+                raise HTTPException(status_code=403, detail={"error": "运营人员不能设置管理员或运营角色"})
         user = user_service.update_user(key, body.model_dump(exclude_none=True))
         if user:
             return {"item": user}
         raise HTTPException(status_code=404, detail={"error": "用户不存在"})
 
     @router.get("/api/stats")
-    async def get_stats(admin: dict = Depends(get_admin_auth)):
+    async def get_stats(auth: dict = Depends(get_operator_auth)):
         return stats_service.get_stats()
 
     # ── 图片历史和广场接口 ──────────────────────────────────────────
@@ -646,6 +696,17 @@ def create_app() -> FastAPI:
         if not image:
             raise HTTPException(status_code=404, detail={"error": "图片不存在"})
         return {"item": image}
+
+    @router.post("/api/images/batch")
+    async def get_images_batch(body: dict, auth: dict = Depends(get_active_auth)):
+        ids = body.get("ids", [])
+        if not isinstance(ids, list) or not ids:
+            raise HTTPException(status_code=400, detail={"error": "ids 不能为空"})
+        if len(ids) > 100:
+            raise HTTPException(status_code=400, detail={"error": "每次最多 100 张"})
+        user_key = auth["key"] if auth["role"] != "admin" else None
+        items = image_history_service.get_images_batch(ids, user_key)
+        return {"items": items}
 
     @router.delete("/api/images/history/{image_id}")
     async def delete_image_history(image_id: str, auth: dict = Depends(get_active_auth)):

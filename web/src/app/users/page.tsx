@@ -21,12 +21,14 @@ export default function UsersPage() {
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [newUserName, setNewUserName] = useState("");
   const [newUserKey, setNewUserKey] = useState("");
+  const [newUserRole, setNewUserRole] = useState("user");
   const [newUserQuota, setNewUserQuota] = useState("-1");
-  
+
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [editUserName, setEditUserName] = useState("");
   const [editUserQuota, setEditUserQuota] = useState("-1");
   const [editUserStatus, setEditUserStatus] = useState<"active" | "disabled">("active");
+  const [editUserRole, setEditUserRole] = useState("user");
 
   const copyToClipboard = async (text: string) => {
     try {
@@ -78,11 +80,12 @@ export default function UsersPage() {
     }
     setIsCreating(true);
     try {
-      await createUser(newUserName, Number(newUserQuota), newUserKey.trim() || undefined);
+      await createUser(newUserName, Number(newUserQuota), newUserKey.trim() || undefined, newUserRole);
       toast.success("用户创建成功");
       setShowAddDialog(false);
       setNewUserName("");
       setNewUserKey("");
+      setNewUserRole("user");
       setNewUserQuota("-1");
       void loadUsers();
     } catch (error) {
@@ -97,6 +100,7 @@ export default function UsersPage() {
     setEditUserName(user.name);
     setEditUserQuota(user.quota.toString());
     setEditUserStatus(user.status);
+    setEditUserRole(user.role || "user");
     setShowEditDialog(true);
   };
 
@@ -112,6 +116,7 @@ export default function UsersPage() {
         name: editUserName,
         quota: Number(editUserQuota),
         status: editUserStatus,
+        role: editUserRole,
       });
       toast.success("用户信息已更新");
       setShowEditDialog(false);
@@ -189,6 +194,19 @@ export default function UsersPage() {
               />
             </div>
             <div className="space-y-2">
+              <label className="text-sm font-medium">角色</label>
+              <Select value={newUserRole} onValueChange={setNewUserRole}>
+                <SelectTrigger className="h-10 w-full rounded-xl border-border">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="user">普通用户</SelectItem>
+                  <SelectItem value="operator">运营人员</SelectItem>
+                  <SelectItem value="admin">管理员</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
               <label className="text-sm font-medium">额度 (画图次数，-1 为无限制)</label>
               <Input
                 type="number"
@@ -237,6 +255,19 @@ export default function UsersPage() {
               />
             </div>
             <div className="space-y-2">
+              <label className="text-sm font-medium">角色</label>
+              <Select value={editUserRole} onValueChange={setEditUserRole}>
+                <SelectTrigger className="h-10 w-full rounded-xl border-border">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="user">普通用户</SelectItem>
+                  <SelectItem value="operator">运营人员</SelectItem>
+                  <SelectItem value="admin">管理员</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
               <label className="text-sm font-medium">账号状态</label>
               <Select value={editUserStatus} onValueChange={(value) => setEditUserStatus(value as "active" | "disabled")}>
                 <SelectTrigger className="h-10 w-full rounded-xl border-border">
@@ -281,6 +312,7 @@ export default function UsersPage() {
                     <th className="px-6 py-4">用户名</th>
                     <th className="px-6 py-4">API Key</th>
                     <th className="px-6 py-4">已用 / 总计</th>
+                    <th className="px-6 py-4">角色</th>
                     <th className="px-6 py-4">状态</th>
                     <th className="px-6 py-4">创建时间</th>
                     <th className="px-6 py-4">操作</th>
@@ -309,6 +341,16 @@ export default function UsersPage() {
                       <td className="px-6 py-4">
                         <Badge variant={user.quota === -1 ? "info" : (user.used >= user.quota ? "danger" : "success")} className="rounded-md">
                           {user.used} / {user.quota === -1 ? "∞" : user.quota}
+                        </Badge>
+                      </td>
+                      <td className="px-6 py-4">
+                        <Badge
+                          variant={
+                            user.role === "admin" ? "default" : user.role === "operator" ? "outline" : "secondary"
+                          }
+                          className="rounded-md"
+                        >
+                          {user.role === "admin" ? "管理员" : user.role === "operator" ? "运营" : "用户"}
                         </Badge>
                       </td>
                       <td className="px-6 py-4">

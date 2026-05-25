@@ -1,20 +1,51 @@
+import base64
+import io
 import uuid
 import json
 from datetime import datetime
 from typing import List, Dict, Any, Optional
+
+from PIL import Image
+
 from services.database import db
 
+THUMBNAIL_MAX_PX = 400
+THUMBNAIL_JPEG_QUALITY = 75
+
+
+def _make_thumbnail(image_url: str) -> str:
+    """从 data:image/...;base64,... URL 生成 JPEG 缩略图 data URL"""
+    try:
+        header, b64 = image_url.split(",", 1)
+        raw = base64.b64decode(b64)
+        img = Image.open(io.BytesIO(raw))
+        if img.mode in ("RGBA", "P"):
+            img = img.convert("RGB")
+        w, h = img.size
+        if max(w, h) > THUMBNAIL_MAX_PX:
+            ratio = THUMBNAIL_MAX_PX / max(w, h)
+            img = img.resize((int(w * ratio), int(h * ratio)), Image.LANCZOS)
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=THUMBNAIL_JPEG_QUALITY)
+        return f"data:image/jpeg;base64,{base64.b64encode(buf.getvalue()).decode('utf-8')}"
+    except Exception:
+        return ""
+
+
 class ImageHistoryService:
-    def save_image(self, user_key: str, prompt: str, image_url: str, model: str) -> str:
+    def save_image(self, user_key: str, prompt: str, image_url: str, model: str, **extra) -> str:
         image_id = str(uuid.uuid4())
+        thumbnail_url = _make_thumbnail(image_url)
         data = {
             "id": image_id,
             "user_key": user_key,
             "prompt": prompt,
             "image_url": image_url,
+            "thumbnail_url": thumbnail_url,
             "model": model,
             "created_at": datetime.now().isoformat(),
-            "is_public": False
+            "is_public": False,
+            **extra,
         }
         db.execute(
             "INSERT INTO images (id, user_key, data) VALUES (?, ?, ?)",
@@ -40,11 +71,30 @@ class ImageHistoryService:
         """管理员分页查询所有用户的图片，返回 (items, total)"""
         return db.fetch_paginated("images", page, page_size, order_by="created_at DESC")
 
+    def get_images_batch(self, image_ids: list[str], user_key: str | None = None) -> list[dict]:
+        """批量获取图片数据，可选择按 user_key 过滤"""
+        if not image_ids:
+            return []
+        placeholders = ",".join(["?" for _ in image_ids])
+        if user_key:
+            rows = db.fetch_all(
+                f"SELECT data FROM images WHERE id IN ({placeholders}) AND user_key = ?",
+                (*image_ids, user_key),
+            )
+        else:
+            rows = db.fetch_all(
+                f"SELECT data FROM images WHERE id IN ({placeholders})",
+                tuple(image_ids),
+            )
+        return [json.loads(row["data"]) for row in rows]
+
     def list_all_images_meta(self, page: int, page_size: int) -> tuple:
-        """管理员分页查询，只返回元数据（不含 base64 图片，速度快）"""
+        """管理员分页查询，只返回元数据 + 缩略图（不含原图 base64）"""
         items, total = db.fetch_paginated("images", page, page_size, order_by="created_at DESC")
         for item in items:
             item.pop("image_url", None)
+            if not item.get("thumbnail_url"):
+                item["thumbnail_url"] = ""
         return items, total
 
 image_history_service = ImageHistoryService()

@@ -38,7 +38,7 @@ class UserService:
         alphabet = string.ascii_letters + string.digits
         return "sk-" + "".join(secrets.choice(alphabet) for _ in range(length))
 
-    def create_user(self, name: str, quota: int, key: str = "") -> dict:
+    def create_user(self, name: str, quota: int, key: str = "", role: str = "user") -> dict:
         with self._lock:
             if key:
                 key = key.strip()
@@ -52,7 +52,8 @@ class UserService:
                 "quota": quota,
                 "used": 0,
                 "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "status": "active"
+                "status": "active",
+                "role": role,
             }
             self._users.append(user)
             self._save_users()

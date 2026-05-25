@@ -19,6 +19,7 @@ import {
   saveConversation as apiSaveConversation,
   deleteConversation as apiDeleteConversation,
   clearConversations as apiClearConversations,
+  fetchImagesBatch,
 } from "@/lib/api";
 import { getStoredAuthKey } from "@/store/auth";
 import {
@@ -32,6 +33,7 @@ import {
 } from "@/store/image-conversations";
 
 const ACTIVE_CONVERSATION_STORAGE_KEY = "chatgpt2api:image_active_conversation_id";
+const ACTIVE_TURNS_SESSION_KEY = "chatgpt2api:image_active_turns";
 const activeConversationQueueIds = new Set<string>();
 
 function buildConversationTitle(prompt: string) {
@@ -106,8 +108,81 @@ function sortImageConversations(conversations: ImageConversation[]) {
   return [...conversations].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
+function stripB64ForServerSync(conversation: ImageConversation): ImageConversation {
+  return {
+    ...conversation,
+    turns: conversation.turns.map((turn) => ({
+      ...turn,
+      images: turn.images.map((img) => ({
+        id: img.id,
+        status: img.status,
+        image_id: img.image_id,
+        ...(img.error ? { error: img.error } : {}),
+      })),
+    })),
+  };
+}
+
+async function hydrateConversations(
+  conversations: ImageConversation[],
+): Promise<ImageConversation[]> {
+  // 收集所有缺少 b64_json 但有 image_id 的图片 ID
+  const allMissingIds: string[] = [];
+  for (const conv of conversations) {
+    for (const turn of conv.turns) {
+      for (const img of turn.images) {
+        if (img.image_id && !img.b64_json) {
+          allMissingIds.push(img.image_id);
+        }
+      }
+    }
+  }
+
+  if (allMissingIds.length === 0) return conversations;
+
+  let idToB64 = new Map<string, string>();
+  try {
+    const { items: batchItems } = await fetchImagesBatch(allMissingIds);
+    for (const item of batchItems) {
+      if (item.image_url) {
+        const b64 = item.image_url.replace(/^data:image\/\w+;base64,/, "");
+        idToB64.set(item.id, b64);
+      }
+    }
+  } catch { /* hydration 失败不阻塞 */ }
+
+  if (idToB64.size === 0) return conversations;
+
+  return conversations.map((conv) => ({
+    ...conv,
+    turns: conv.turns.map((turn) => ({
+      ...turn,
+      images: turn.images.map((img) => {
+        const b64 = img.image_id ? idToB64.get(img.image_id) : undefined;
+        if (b64 && !img.b64_json) {
+          return { ...img, b64_json: b64, status: img.status === "loading" ? "success" : img.status };
+        }
+        return img;
+      }),
+    })),
+  }));
+}
+
 async function recoverConversationHistory(items: ImageConversation[]) {
-  const normalized = items.map((conversation) => {
+  const activeTurnIds: string[] = (() => {
+    try {
+      if (typeof window === "undefined") return [];
+      const raw = window.sessionStorage.getItem(ACTIVE_TURNS_SESSION_KEY);
+      return raw ? (JSON.parse(raw) as string[]) : [];
+    } catch {
+      return [];
+    }
+  })();
+
+  // 单次批量请求从后端 images 表恢复 b64_json
+  const hydrated = await hydrateConversations(items);
+
+  const normalized = hydrated.map((conversation) => {
     let changed = false;
 
     const turns = conversation.turns.map((turn) => {
@@ -116,40 +191,54 @@ async function recoverConversationHistory(items: ImageConversation[]) {
       }
 
       const loadingCount = turn.images.filter((image) => image.status === "loading").length;
-      if (loadingCount > 0) {
-        const message = "任务中断，未完成的图片已标记为失败";
+      if (loadingCount === 0) {
+        const failedCount = turn.images.filter((image) => image.status === "error").length;
+        const successCount = turn.images.filter((image) => image.status === "success").length;
+        const nextStatus: ImageTurnStatus =
+          failedCount > 0 ? "error" : successCount > 0 ? "success" : "queued";
+        const nextError = failedCount > 0 ? turn.error || `其中 ${failedCount} 张未成功生成` : undefined;
+        if (nextStatus === turn.status && nextError === turn.error) return turn;
+        changed = true;
+        return { ...turn, status: nextStatus, error: nextError };
+      }
+
+      // 有 loading 状态的图片
+      if (turn.status === "generating") {
+        if (activeTurnIds.includes(turn.id)) {
+          // sessionStorage 有记录 → zombie 可能还活着，保留原样
+          return turn;
+        }
+        // 检查是否有 image_id 引用（说明 API 已返回并保存到 images 表）
+        const hasImageIdRef = turn.images.some((img) => img.image_id);
+        if (hasImageIdRef) {
+          // 有 image_id → 从 hydration 已恢复，标记为 success/error
+          const failedCount = turn.images.filter((img) => img.status === "error").length;
+          const successCount = turn.images.filter((img) => img.status === "success").length;
+          changed = true;
+          const resolvedStatus: ImageTurnStatus = failedCount > 0 && successCount === 0 ? "error" : "success";
+          return {
+            ...turn,
+            status: resolvedStatus,
+            error: failedCount > 0 ? `其中 ${failedCount} 张未成功生成` : undefined,
+          };
+        }
+        // 非活跃且无 image_id → 标记为失败（API 真没跑完）
         changed = true;
         return {
           ...turn,
-          status: "error" as const,
-          error: message,
+          status: "error" as ImageTurnStatus,
+          error: "任务中断，未完成的图片已标记为失败",
           images: turn.images.map((image) =>
-            image.status === "loading" ? { ...image, status: "error" as const, error: message } : image,
+            image.status === "loading" ? { ...image, status: "error" as const, error: "任务中断" } : image,
           ),
         };
       }
 
-      const failedCount = turn.images.filter((image) => image.status === "error").length;
-      const successCount = turn.images.filter((image) => image.status === "success").length;
-      const nextStatus: ImageTurnStatus =
-        failedCount > 0 ? "error" : successCount > 0 ? "success" : "queued";
-      const nextError = failedCount > 0 ? turn.error || `其中 ${failedCount} 张未成功生成` : undefined;
-      if (nextStatus === turn.status && nextError === turn.error) {
-        return turn;
-      }
-
-      changed = true;
-      return {
-        ...turn,
-        status: nextStatus,
-        error: nextError,
-      };
+      // queued 状态：保持不变，队列会自动处理
+      return turn;
     });
 
-    if (!changed) {
-      return conversation;
-    }
-
+    if (!changed) return conversation;
     const lastTurn = turns.length > 0 ? turns[turns.length - 1] : null;
     return {
       ...conversation,
@@ -158,10 +247,10 @@ async function recoverConversationHistory(items: ImageConversation[]) {
     };
   });
 
-  const changedConversations = normalized.filter((conversation, index) => conversation !== items[index]);
+  const changedConversations = normalized.filter((conv, index) => conv !== items[index]);
   if (changedConversations.length > 0) {
     for (const conv of changedConversations) {
-      await apiSaveConversation(conv);
+      await apiSaveConversation(stripB64ForServerSync(conv));
     }
   }
 
@@ -255,8 +344,8 @@ export default function ImagePage() {
   const loadQuota = useCallback(async () => {
     try {
       const data = await fetchMe();
-      if (data.role === "admin") {
-        setAvailableQuota("管理员");
+      if (data.role === "admin" || data.role === "operator") {
+        setAvailableQuota(data.role === "admin" ? "管理员" : "运营");
       } else {
         const remaining = data.quota === -1 ? "无限制" : (data.quota || 0) - (data.used || 0);
         setAvailableQuota(String(remaining));
@@ -324,7 +413,7 @@ export default function ImagePage() {
     ]);
     conversationsRef.current = nextConversations;
     setConversations(nextConversations);
-    await apiSaveConversation(conversation);
+    await apiSaveConversation(stripB64ForServerSync(conversation));
   };
 
   const updateConversation = useCallback(
@@ -342,7 +431,7 @@ export default function ImagePage() {
       conversationsRef.current = nextConversations;
       setConversations(nextConversations);
       if (options.persist !== false) {
-        await apiSaveConversation(nextConversation);
+        await apiSaveConversation(stripB64ForServerSync(nextConversation));
       }
     },
     [],
@@ -384,8 +473,9 @@ export default function ImagePage() {
       const message = error instanceof Error ? error.message : "删除会话失败";
       toast.error(message);
       const { items } = await fetchConversations();
-      conversationsRef.current = items;
-      setConversations(items);
+      const hydrated = await hydrateConversations(items);
+      conversationsRef.current = hydrated;
+      setConversations(hydrated);
     }
   };
 
@@ -498,6 +588,13 @@ export default function ImagePage() {
       }
 
       activeConversationQueueIds.add(conversationId);
+      // 记录活跃轮次到 sessionStorage，用于页面重载时判断 zombie 是否存活
+      try {
+        const active = JSON.parse(window.sessionStorage.getItem(ACTIVE_TURNS_SESSION_KEY) || "[]") as string[];
+        active.push(queuedTurn.id);
+        window.sessionStorage.setItem(ACTIVE_TURNS_SESSION_KEY, JSON.stringify(active));
+      } catch { /* ignore */ }
+
       await updateConversation(conversationId, (current) => {
         const conversation = current ?? snapshot;
         return {
@@ -566,6 +663,7 @@ export default function ImagePage() {
               id: pendingImage.id,
               status: "success",
               b64_json: result.b64_json,
+              image_id: result.image_id,
             };
             await updateConversation(
               conversationId,
@@ -584,7 +682,6 @@ export default function ImagePage() {
                   ),
                 };
               },
-              { persist: false },
             );
           } else {
             failedCount += 1;
@@ -662,6 +759,18 @@ export default function ImagePage() {
         toast.error(message);
       } finally {
         activeConversationQueueIds.delete(conversationId);
+        // 清理 sessionStorage 中的活跃轮次记录
+        try {
+          const raw = window.sessionStorage.getItem(ACTIVE_TURNS_SESSION_KEY);
+          const active = raw ? (JSON.parse(raw) as string[]) : [];
+          const filtered = active.filter((id) => id !== queuedTurn.id);
+          if (filtered.length > 0) {
+            window.sessionStorage.setItem(ACTIVE_TURNS_SESSION_KEY, JSON.stringify(filtered));
+          } else {
+            window.sessionStorage.removeItem(ACTIVE_TURNS_SESSION_KEY);
+          }
+        } catch { /* ignore */ }
+
         for (const conversation of conversationsRef.current) {
           if (
             !activeConversationQueueIds.has(conversation.id) &&

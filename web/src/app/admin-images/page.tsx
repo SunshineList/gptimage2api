@@ -16,123 +16,7 @@ type LightboxImage = {
   src: string;
 };
 
-type ImageMeta = Omit<ImageHistory, "image_url">;
-
-/** 单张图片卡片：独立按需加载原图 */
-function ImageCard({
-  meta,
-  index,
-  onOpenLightbox,
-}: {
-  meta: ImageMeta;
-  index: number;
-  onOpenLightbox: (index: number, src: string) => void;
-}) {
-  const [src, setSrc] = useState<string | null>(null);
-  const [loadError, setLoadError] = useState(false);
-  const cardRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    const el = cardRef.current;
-    if (!el) return;
-
-    const obs = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting && src === null && !loadError) {
-          fetchAdminImage(meta.id)
-            .then((data) => setSrc(data.item.image_url))
-            .catch(() => setLoadError(true));
-        }
-      },
-      { rootMargin: "400px" },
-    );
-
-    obs.observe(el);
-    return () => obs.disconnect();
-  }, [meta.id, src, loadError]);
-
-  const handleDownload = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!src) return;
-    const link = document.createElement("a");
-    link.href = src;
-    link.download = `image-${meta.id}.png`;
-    link.click();
-  };
-
-  const isLoaded = !!src;
-
-  return (
-    <div
-      ref={cardRef}
-      className="group overflow-hidden rounded-2xl border border-border/40 bg-card shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5"
-    >
-      {/* Image area */}
-      <button
-        type="button"
-        className="relative block aspect-square w-full overflow-hidden bg-secondary/50 cursor-zoom-in"
-        onClick={() => src && onOpenLightbox(index, src)}
-        disabled={!isLoaded}
-      >
-        {isLoaded ? (
-          <img
-            src={src}
-            alt={meta.prompt}
-            className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center">
-            <LoaderCircle className="size-6 animate-spin text-muted-foreground/30" />
-          </div>
-        )}
-
-        {/* Hover overlay */}
-        {isLoaded && (
-          <div className="absolute inset-0 flex flex-col justify-end bg-gradient-to-t from-black/70 via-transparent to-transparent p-3 opacity-0 transition-all duration-300 group-hover:opacity-100">
-            <p className="line-clamp-3 text-[12px] leading-5 text-white/90">
-              {meta.prompt}
-            </p>
-          </div>
-        )}
-      </button>
-
-      {/* Info bar */}
-      <div className="p-3 space-y-2">
-        <p
-          className="line-clamp-2 text-[13px] font-medium leading-5 text-foreground"
-          title={meta.prompt}
-        >
-          {meta.prompt}
-        </p>
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5 min-w-0">
-            <Badge variant="outline" className="shrink-0 rounded-md border-border/60 px-1.5 py-0 text-[10px] text-muted-foreground">
-              {meta.model}
-            </Badge>
-            <span className="truncate text-[11px] text-muted-foreground flex items-center gap-1">
-              <User className="size-3 shrink-0" />
-              {meta.user_key?.slice(0, 10)}...
-            </span>
-          </div>
-          <div className="flex items-center gap-1 shrink-0">
-            <span className="text-[10px] text-muted-foreground/70">
-              {meta.created_at && new Date(meta.created_at).toLocaleDateString("zh-CN")}
-            </span>
-            <button
-              type="button"
-              className="inline-flex size-7 items-center justify-center rounded-lg bg-secondary text-muted-foreground transition hover:bg-primary hover:text-primary-foreground"
-              onClick={handleDownload}
-              aria-label="下载"
-              disabled={!isLoaded}
-            >
-              <Download className="size-3.5" />
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
+type ImageMeta = Omit<ImageHistory, "image_url"> & { thumbnail_url?: string };
 
 export default function AdminImagesPage() {
   const [images, setImages] = useState<ImageMeta[]>([]);
@@ -146,25 +30,21 @@ export default function AdminImagesPage() {
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxImages, setLightboxImages] = useState<LightboxImage[]>([]);
   const [lightboxIndex, setLightboxIndex] = useState(0);
+  // 已加载的原图缓存
+  const loadedFullSrcRef = useRef<Map<string, string>>(new Map());
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
   const loadPage = useCallback(
     async (pageNum: number, append = false) => {
-      if (append) {
-        setIsLoadingMore(true);
-      } else {
-        setIsLoading(true);
-      }
+      if (append) setIsLoadingMore(true);
+      else setIsLoading(true);
 
       try {
         const data = await fetchAdminImages(pageNum, PAGE_SIZE);
         const metas = data.items as ImageMeta[];
-        if (append) {
-          setImages((prev) => [...prev, ...metas]);
-        } else {
-          setImages(metas);
-        }
+        if (append) setImages((prev) => [...prev, ...metas]);
+        else setImages(metas);
         setPage(data.page);
         setTotalPages(data.total_pages);
         setTotal(data.total);
@@ -186,7 +66,6 @@ export default function AdminImagesPage() {
   useEffect(() => {
     const sentinel = sentinelRef.current;
     if (!sentinel) return;
-
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting && !isLoadingMore && page < totalPages) {
@@ -195,40 +74,91 @@ export default function AdminImagesPage() {
       },
       { rootMargin: "300px" },
     );
-
     observer.observe(sentinel);
     return () => observer.disconnect();
   }, [page, totalPages, isLoadingMore, loadPage]);
 
-  const openLightbox = (index: number, src: string) => {
-    setLightboxImages(images.map((img) => ({ id: img.id, src: "" })));
+  const openLightbox = (index: number) => {
+    // 先构建 lightbox 列表（先用缩略图占位）
+    setLightboxImages(
+      images.map((img) => ({
+        id: img.id,
+        src: loadedFullSrcRef.current.get(img.id) || img.thumbnail_url || "",
+      })),
+    );
     setLightboxIndex(index);
-    // 打开灯箱时，加载当前图片的实际 src
-    setLightboxImages((prev) => {
-      const next = [...prev];
-      if (next[index]) next[index] = { ...next[index], src };
-      return next;
-    });
+
+    // 异步加载原图
+    const meta = images[index];
+    if (meta && !loadedFullSrcRef.current.has(meta.id)) {
+      fetchAdminImage(meta.id)
+        .then((data) => {
+          const fullSrc = data.item.image_url;
+          loadedFullSrcRef.current.set(meta.id, fullSrc);
+          setLightboxImages((prev) => {
+            const next = [...prev];
+            if (next[index]) next[index] = { ...next[index], src: fullSrc };
+            return next;
+          });
+        })
+        .catch(() => toast.error("加载原图失败"));
+    }
+
     setLightboxOpen(true);
   };
 
-  // 灯箱切换图片时，如果该图还没加载，按需 fetch
   const handleLightboxIndexChange = (newIndex: number) => {
     setLightboxIndex(newIndex);
-    if (!lightboxImages[newIndex]?.src) {
-      const meta = images[newIndex];
-      if (meta) {
-        fetchAdminImage(meta.id)
-          .then((data) => {
-            setLightboxImages((prev) => {
-              const next = [...prev];
-              if (next[newIndex]) next[newIndex] = { ...next[newIndex], src: data.item.image_url };
-              return next;
-            });
-          })
-          .catch(() => toast.error("加载图片失败"));
+    const meta = images[newIndex];
+    if (!meta) return;
+
+    // 确保当前图已更新到 lightbox
+    setLightboxImages((prev) => {
+      const next = [...prev];
+      if (!next[newIndex] || next[newIndex].id !== meta.id) {
+        next[newIndex] = {
+          id: meta.id,
+          src: loadedFullSrcRef.current.get(meta.id) || meta.thumbnail_url || "",
+        };
       }
+      return next;
+    });
+
+    // 没有则异步加载原图
+    if (!loadedFullSrcRef.current.has(meta.id)) {
+      fetchAdminImage(meta.id)
+        .then((data) => {
+          const fullSrc = data.item.image_url;
+          loadedFullSrcRef.current.set(meta.id, fullSrc);
+          setLightboxImages((prev) => {
+            const next = [...prev];
+            if (next[newIndex]) next[newIndex] = { ...next[newIndex], src: fullSrc };
+            return next;
+          });
+        })
+        .catch(() => toast.error("加载原图失败"));
     }
+  };
+
+  const handleDownload = (meta: ImageMeta) => {
+    // 先用缩略图触发下载，同时异步取原图替换
+    const link = document.createElement("a");
+    const cached = loadedFullSrcRef.current.get(meta.id);
+    if (cached) {
+      link.href = cached;
+      link.download = `image-${meta.id}.png`;
+      link.click();
+      return;
+    }
+    link.href = meta.thumbnail_url || "";
+    link.download = `image-${meta.id}.png`;
+    link.click();
+    // 异步拉原图缓存
+    fetchAdminImage(meta.id)
+      .then((data) => {
+        loadedFullSrcRef.current.set(meta.id, data.item.image_url);
+      })
+      .catch(() => {});
   };
 
   const SkeletonCard = () => (
@@ -246,15 +176,10 @@ export default function AdminImagesPage() {
 
   return (
     <div className="mx-auto w-full max-w-7xl px-1 pb-16 pt-6 sm:px-6 sm:pt-10">
-      {/* Header */}
       <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl">
-            图片管理
-          </h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            查看所有用户生成的图片，共 {total} 张
-          </p>
+          <h1 className="text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl">图片管理</h1>
+          <p className="mt-2 text-sm text-muted-foreground">查看所有用户生成的图片，共 {total} 张</p>
         </div>
         <Button
           onClick={() => loadPage(1)}
@@ -279,14 +204,94 @@ export default function AdminImagesPage() {
       ) : (
         <>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {images.map((meta, index) => (
-              <ImageCard
-                key={meta.id}
-                meta={meta}
-                index={index}
-                onOpenLightbox={openLightbox}
-              />
-            ))}
+            {images.map((meta, index) => {
+              const thumbSrc = meta.thumbnail_url || "";
+              return (
+                <div
+                  key={meta.id}
+                  className="group overflow-hidden rounded-2xl border border-border/40 bg-card shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5"
+                >
+                  <button
+                    type="button"
+                    className="relative block aspect-square w-full overflow-hidden bg-secondary/50 cursor-zoom-in"
+                    onClick={() => openLightbox(index)}
+                  >
+                    {thumbSrc ? (
+                      <img
+                        src={thumbSrc}
+                        alt={meta.prompt}
+                        loading="lazy"
+                        decoding="async"
+                        className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center">
+                        <LoaderCircle className="size-5 animate-spin text-muted-foreground/30" />
+                      </div>
+                    )}
+
+                    <div className="absolute inset-0 flex flex-col justify-end bg-gradient-to-t from-black/70 via-transparent to-transparent p-3 opacity-0 transition-all duration-300 group-hover:opacity-100">
+                      <p className="line-clamp-3 text-[12px] leading-5 text-white/90">{meta.prompt}</p>
+                    </div>
+                  </button>
+
+                  <div className="p-3 space-y-2">
+                    {meta.type === "edit" && meta.reference_image_urls && meta.reference_image_urls.length > 0 && (
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] text-muted-foreground shrink-0">参考图</span>
+                        <div className="flex gap-1 overflow-x-auto">
+                          {meta.reference_image_urls.slice(0, 3).map((refUrl, i) => (
+                            <img
+                              key={i}
+                              src={refUrl}
+                              alt={`参考图 ${i + 1}`}
+                              className="size-10 shrink-0 rounded-lg border border-border/40 object-cover bg-secondary/50"
+                            />
+                          ))}
+                          {meta.reference_image_urls.length > 3 && (
+                            <span className="text-[10px] text-muted-foreground self-center">
+                              +{meta.reference_image_urls.length - 3}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    <p className="line-clamp-2 text-[13px] font-medium leading-5 text-foreground" title={meta.prompt}>
+                      {meta.prompt}
+                    </p>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <Badge variant="outline" className="shrink-0 rounded-md border-border/60 px-1.5 py-0 text-[10px] text-muted-foreground">
+                          {meta.model}
+                        </Badge>
+                        {meta.type === "edit" && (
+                          <Badge className="shrink-0 rounded-md border-0 px-1.5 py-0 text-[10px] bg-amber-100 text-amber-700">
+                            编辑
+                          </Badge>
+                        )}
+                        <span className="truncate text-[11px] text-muted-foreground flex items-center gap-1">
+                          <User className="size-3 shrink-0" />
+                          {meta.user_key?.slice(0, 10)}...
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <span className="text-[10px] text-muted-foreground/70">
+                          {meta.created_at && new Date(meta.created_at).toLocaleDateString("zh-CN")}
+                        </span>
+                        <button
+                          type="button"
+                          className="inline-flex size-7 items-center justify-center rounded-lg bg-secondary text-muted-foreground transition hover:bg-primary hover:text-primary-foreground"
+                          onClick={() => handleDownload(meta)}
+                          aria-label="下载"
+                        >
+                          <Download className="size-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
 
           <div ref={sentinelRef} className="flex h-20 items-center justify-center">
@@ -302,7 +307,6 @@ export default function AdminImagesPage() {
         </>
       )}
 
-      {/* Lightbox */}
       <ImageLightbox
         images={lightboxImages}
         currentIndex={lightboxIndex}

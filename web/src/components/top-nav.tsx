@@ -44,13 +44,13 @@ export function TopNav() {
   }
 
   const navItems = [
-    { href: "/", label: "生图大厅", roles: ["admin", "user", "guest"] },
-    { href: "/image", label: "画图后台", roles: ["admin", "user"] },
-    { href: "/gallery", label: "我的画廊", roles: ["admin", "user"] },
-    { href: "/plaza", label: "创作广场", roles: ["admin", "user", "guest"] },
+    { href: "/", label: "生图大厅", roles: ["admin", "user", "guest", "operator"] },
+    { href: "/image", label: "画图后台", roles: ["admin", "user", "operator"] },
+    { href: "/gallery", label: "我的画廊", roles: ["admin", "user", "operator"] },
+    { href: "/plaza", label: "创作广场", roles: ["admin", "user", "guest", "operator"] },
     { href: "/accounts", label: "号池管理", roles: ["admin"] },
-    { href: "/users", label: "用户管理", roles: ["admin"] },
-    { href: "/stats", label: "统计面板", roles: ["admin"] },
+    { href: "/users", label: "用户管理", roles: ["admin", "operator"] },
+    { href: "/stats", label: "统计面板", roles: ["admin", "operator"] },
     { href: "/admin-images", label: "图片管理", roles: ["admin"] },
     { href: "/settings", label: "设置", roles: ["admin"] },
   ].filter((item) => item.roles.includes(me?.role || "guest"));

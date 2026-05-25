@@ -124,7 +124,7 @@ export async function relinkAccount(accessToken: string) {
 }
 
 export async function generateImage(prompt: string, model?: ImageModel, n: number = 1) {
-  return httpRequest<{ created: number; data: Array<{ b64_json: string; revised_prompt?: string }> }>(
+  return httpRequest<{ created: number; data: Array<{ b64_json: string; revised_prompt?: string; image_id?: string }> }>(
     "/v1/images/generations",
     {
       method: "POST",
@@ -151,7 +151,7 @@ export async function editImage(files: File | File[], prompt: string, model?: Im
   }
   formData.append("n", String(n));
 
-  return httpRequest<{ created: number; data: Array<{ b64_json: string; revised_prompt?: string }> }>(
+  return httpRequest<{ created: number; data: Array<{ b64_json: string; revised_prompt?: string; image_id?: string }> }>(
     "/v1/images/edits",
     {
       method: "POST",
@@ -379,16 +379,17 @@ export type User = {
   created_at: string;
   last_used_at?: string;
   status: "active" | "disabled";
+  role: UserRole;
 };
 
 export async function fetchUsers() {
   return httpRequest<{ items: User[] }>("/api/users");
 }
 
-export async function createUser(name: string, quota: number, key?: string) {
+export async function createUser(name: string, quota: number, key?: string, role: string = "user") {
   return httpRequest<User>("/api/users", {
     method: "POST",
-    body: { name, quota, key: key || "" },
+    body: { name, quota, key: key || "", role },
   });
 }
 
@@ -405,6 +406,15 @@ export async function updateUser(key: string, updates: Partial<User>) {
   });
 }
 
+// ── Batch image fetch ──────────────────────────────────────────
+
+export async function fetchImagesBatch(ids: string[]) {
+  return httpRequest<{ items: ImageHistory[] }>("/api/images/batch", {
+    method: "POST",
+    body: { ids },
+  });
+}
+
 // ── Statistics ───────────────────────────────────────────────────
 
 export type Stats = {
@@ -413,7 +423,7 @@ export type Stats = {
   daily: Record<string, { success: number; fail: number }>;
 };
 
-export type UserRole = "admin" | "user" | "guest";
+export type UserRole = "admin" | "user" | "guest" | "operator";
 
 export interface MeResponse {
   role: UserRole;
@@ -436,7 +446,7 @@ export type Session = {
   id: string;
   user_key: string;
   created_at: string;
-  role: "admin" | "user";
+  role: "admin" | "user" | "operator";
 };
 
 export type ImageHistory = {
@@ -444,9 +454,12 @@ export type ImageHistory = {
   user_key: string;
   prompt: string;
   image_url: string;
+  thumbnail_url?: string;
   model: string;
   created_at: string;
   is_public: boolean;
+  type?: "generate" | "edit";
+  reference_image_urls?: string[];
 };
 
 export type PlazaPost = {
