@@ -140,4 +140,15 @@ class Database:
     def delete_data(self, table: str, key_col: str, key_val: str):
         self.execute(f"DELETE FROM {table} WHERE {key_col} = ?", (key_val,))
 
+    def fetch_paginated(self, table: str, page: int, page_size: int, order_by: str = "rowid DESC") -> tuple:
+        """分页查询，返回 (数据列表, 总数)"""
+        offset = (page - 1) * page_size
+        total_row = self.fetch_one(f"SELECT COUNT(*) as cnt FROM {table}")
+        total = total_row["cnt"] if total_row else 0
+        rows = self.fetch_all(
+            f"SELECT data FROM {table} ORDER BY {order_by} LIMIT ? OFFSET ?",
+            (page_size, offset),
+        )
+        return [json.loads(row["data"]) for row in rows], total
+
 db = Database(config.db_path)

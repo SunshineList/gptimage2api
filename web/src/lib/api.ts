@@ -515,3 +515,17 @@ export async function clearConversations() {
   const response = await request.delete(`/api/images/conversations`);
   return response.data;
 }
+
+// ── Admin: All Images ─────────────────────────────────────────────
+
+export type AdminImagesResponse = {
+  items: ImageHistory[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+};
+
+export async function fetchAdminImages(page = 1, pageSize = 20) {
+  return httpRequest<AdminImagesResponse>(`/api/admin/images?page=${page}&page_size=${pageSize}`);
+}

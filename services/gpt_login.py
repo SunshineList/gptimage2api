@@ -74,24 +74,43 @@ def _make_trace_headers() -> Dict[str, str]:
 # Sentinel 挑战获取 (完全从 gpt_reg_simple.py 移植)
 # ============================================================
 
+def _extract_flow_token(flows_result: Optional[dict], flow: str) -> Optional[str]:
+    """从 get_sentinel_tokens 的批量结果中提取单个 flow 的 token"""
+    if not flows_result or "flows" not in flows_result:
+        return None
+    f_data = flows_result["flows"].get(flow)
+    if f_data and "token" in f_data:
+        token = f_data["token"]
+        if isinstance(token, dict):
+            return json.dumps(token, separators=(",", ":"))
+        return token
+    return None
+
+
 def build_sentinel_token(
     session, device_id: str, flow: str = "authorize_continue",
     user_agent=None, sec_ch_ua=None, impersonate=None, proxy=None, require_turnstile=False
 ) -> Optional[str]:
-    """通过 Playwright 浏览器获取 sentinel token"""
+    """通过 Playwright 浏览器获取 sentinel token（单 flow，兼容旧调用）"""
     try:
         from services.sentinel_browser import get_sentinel_tokens
         res = get_sentinel_tokens(flows=[flow], proxy=proxy, device_id=device_id)
-        if res and "flows" in res:
-            f_data = res["flows"].get(flow)
-            if f_data and "token" in f_data:
-                token = f_data["token"]
-                if isinstance(token, dict):
-                    return json.dumps(token, separators=(",", ":"))
-                return token
-        return None
+        return _extract_flow_token(res, flow)
     except Exception as e:
         print(f"[build_sentinel_token] 获取浏览器 Token 异常: {e}")
+        return None
+
+
+def prefetch_sentinel_tokens(device_id: str, proxy: str = "", flows: list = None) -> Optional[dict]:
+    """预加载：一次浏览器会话获取多个 flow 的 sentinel token，避免多次启动浏览器"""
+    if flows is None:
+        flows = ["authorize_continue", "password_verify", "email_otp"]
+    try:
+        from services.sentinel_browser import get_sentinel_tokens
+        print(f"[prefetch_sentinel] 预加载 sentinel tokens: {flows}")
+        return get_sentinel_tokens(flows=flows, proxy=proxy, device_id=device_id)
+    except Exception as e:
+        print(f"[prefetch_sentinel] 预加载异常: {e}")
         return None
 
 # ============================================================
@@ -210,12 +229,20 @@ class ChatGPTLogin:
             r = session.get(signin_url, headers=nav_headers, allow_redirects=True)
             time.sleep(random.uniform(0.5, 1.5))
 
+            # 预加载 sentinel tokens：一次浏览器会话获取所有 flow 的 token
+            sentinel_flows = ["authorize_continue", "password_verify", "email_otp"]
+            prefetched = prefetch_sentinel_tokens(self.device_id, self.proxy, sentinel_flows)
+            if prefetched is None:
+                print(f"      [登录] 预加载 sentinel 失败，将回退到按需获取")
+
             print(f"      [登录] Step 4: 提交邮箱")
-            sentinel = build_sentinel_token(session, self.device_id, "authorize_continue", self.ua, self.sec_ch_ua, proxy=self.proxy)
+            sentinel = _extract_flow_token(prefetched, "authorize_continue") or build_sentinel_token(
+                session, self.device_id, "authorize_continue", self.ua, self.sec_ch_ua, proxy=self.proxy
+            )
             headers = self._build_api_headers(r.url)
             headers["referer"] = f"{self.AUTH}/log-in"
             if sentinel: headers["openai-sentinel-token"] = sentinel
-            
+
             r = session.post(
                 f"{self.AUTH}/api/accounts/authorize/continue",
                 json={"username": {"value": email, "kind": "email"}, "screen_hint": "login"},
@@ -228,24 +255,26 @@ class ChatGPTLogin:
                 r = session.get(full_url, headers=nav_headers, allow_redirects=True)
 
             print(f"      [登录] Step 5: 验证密码")
-            sentinel_pwd = build_sentinel_token(session, self.device_id, "password_verify", self.ua, self.sec_ch_ua, proxy=self.proxy)
-            headers["referer"] = r.url 
+            sentinel_pwd = _extract_flow_token(prefetched, "password_verify") or build_sentinel_token(
+                session, self.device_id, "password_verify", self.ua, self.sec_ch_ua, proxy=self.proxy
+            )
+            headers["referer"] = r.url
             if sentinel_pwd: headers["openai-sentinel-token"] = sentinel_pwd
-            
+
             r = session.post(f"{self.AUTH}/api/accounts/password/verify", json={"password": password}, headers=headers, allow_redirects=False)
             data = r.json()
             continue_url = data.get("continue_url", "")
             page_type = (data.get("page") or {}).get("type") or ""
-            
+
             # --- Step 6: 登录 OTP 验证 (如果触发) ---
             if page_type == "email_otp_verification" or "email-verification" in continue_url:
                 print(f"      [登录] Step 6: 需要二次邮件认证")
                 h_otp = self._build_api_headers(f"{self.AUTH}/email-verification")
                 h_otp["oai-device-id"] = self.device_id
-                
+
                 # 初始化 OTP 发送
                 session.post(f"{self.AUTH}/api/accounts/email-otp/init", json={}, headers=h_otp)
-                
+
                 # 确保邮箱存在 (用于刷新已删除的临时邮箱)
                 email_service.create_custom_email(email)
 
@@ -259,12 +288,14 @@ class ChatGPTLogin:
                     if code:
                         new_code = code
                         break
-                
+
                 if new_code:
                     print(f"      [登录] 提交验证码: {new_code}")
-                    sentinel_otp = build_sentinel_token(session, self.device_id, "email_otp", self.ua, self.sec_ch_ua, proxy=self.proxy)
+                    sentinel_otp = _extract_flow_token(prefetched, "email_otp") or build_sentinel_token(
+                        session, self.device_id, "email_otp", self.ua, self.sec_ch_ua, proxy=self.proxy
+                    )
                     if sentinel_otp: h_otp["openai-sentinel-token"] = sentinel_otp
-                    
+
                     rv = session.post(f"{self.AUTH}/api/accounts/email-otp/validate", json={"code": new_code}, headers=h_otp)
                     if rv.status_code == 200:
                         continue_url = rv.json().get("continue_url", continue_url)

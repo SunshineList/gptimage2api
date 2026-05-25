@@ -618,6 +618,24 @@ def create_app() -> FastAPI:
     async def get_image_history(auth: dict = Depends(get_active_auth)):
         return {"items": image_history_service.list_images(auth["key"])}
 
+    @router.get("/api/admin/images")
+    async def get_admin_images(
+        page: int = 1,
+        page_size: int = 20,
+        admin: dict = Depends(get_admin_auth),
+    ):
+        page = max(1, page)
+        page_size = max(1, min(100, page_size))
+        items, total = image_history_service.list_all_images_paginated(page, page_size)
+        total_pages = max(1, (total + page_size - 1) // page_size)
+        return {
+            "items": items,
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": total_pages,
+        }
+
     @router.delete("/api/images/history/{image_id}")
     async def delete_image_history(image_id: str, auth: dict = Depends(get_active_auth)):
         if image_history_service.delete_image(image_id, auth["key"]):

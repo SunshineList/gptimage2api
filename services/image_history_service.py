@@ -36,4 +36,8 @@ class ImageHistoryService:
     def get_image(self, image_id: str) -> Optional[Dict[str, Any]]:
         return db.load_one_data("images", "id", image_id)
 
+    def list_all_images_paginated(self, page: int, page_size: int) -> tuple:
+        """管理员分页查询所有用户的图片，返回 (items, total)"""
+        return db.fetch_paginated("images", page, page_size, order_by="created_at DESC")
+
 image_history_service = ImageHistoryService()

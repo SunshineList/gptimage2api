@@ -51,6 +51,7 @@ export function TopNav() {
     { href: "/accounts", label: "号池管理", roles: ["admin"] },
     { href: "/users", label: "用户管理", roles: ["admin"] },
     { href: "/stats", label: "统计面板", roles: ["admin"] },
+    { href: "/admin-images", label: "图片管理", roles: ["admin"] },
     { href: "/settings", label: "设置", roles: ["admin"] },
   ].filter((item) => item.roles.includes(me?.role || "guest"));
 
@@ -139,16 +140,16 @@ export function TopNav() {
       {/* Mobile Navigation Menu */}
       {isMenuOpen && (
         <div className="fixed inset-0 top-14 z-40 bg-background/95 backdrop-blur-md md:hidden">
-          <nav className="flex max-h-[calc(100vh-3.5rem)] flex-col overflow-y-auto p-6 pb-12">
+          <nav className="flex max-h-[calc(100vh-3.5rem)] flex-col overflow-y-auto px-4 py-4 pb-20">
             {me?.role === "user" && (
-              <div className="mb-6 rounded-2xl bg-secondary p-4">
-                <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">我的额度</div>
-                <div className="text-lg font-semibold text-foreground">
+              <div className="mb-4 rounded-xl bg-secondary p-3">
+                <div className="text-[11px] text-muted-foreground uppercase tracking-wider mb-0.5">我的额度</div>
+                <div className="text-base font-semibold text-foreground">
                   {me.quota === -1 ? "无限制" : (me.quota || 0) - (me.used || 0)}
                 </div>
               </div>
             )}
-            <div className="space-y-1">
+            <div className="space-y-0.5">
               {navItems.map((item) => {
                 const active = pathname === item.href;
                 return (
@@ -156,7 +157,7 @@ export function TopNav() {
                     key={item.href}
                     href={item.href}
                     className={cn(
-                      "flex items-center rounded-xl px-4 py-2.5 text-[15px] font-medium transition-all",
+                      "flex items-center rounded-lg px-3 py-2 text-[14px] font-medium transition-all",
                       active ? "bg-primary text-white" : "text-muted-foreground hover:bg-secondary"
                     )}
                   >
@@ -165,25 +166,25 @@ export function TopNav() {
                 );
               })}
             </div>
-            <div className="mt-8 border-t border-secondary pt-6">
+            <div className="mt-6 border-t border-border/40 pt-4">
               {me ? (
                 <button
                   type="button"
-                  className="flex w-full items-center gap-2 rounded-xl px-4 py-3 text-[16px] font-medium text-rose-500 hover:bg-rose-50"
+                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-[14px] font-medium text-rose-500 hover:bg-rose-50"
                   onClick={() => void handleLogout()}
                 >
-                  <LogOut className="size-5" />
+                  <LogOut className="size-4" />
                   退出登录
                 </button>
               ) : (
                 <Link
                   href="/login"
-                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-[16px] font-semibold text-white shadow-sm hover:bg-primary/95"
+                  className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-[14px] font-semibold text-white shadow-sm hover:bg-primary/95"
                 >
                   立即登录
                 </Link>
               )}
-              <div className="mt-4 px-4 text-xs text-muted-foreground">
+              <div className="mt-3 px-3 text-[11px] text-muted-foreground">
                 当前版本 v{webConfig.appVersion}
               </div>
             </div>
