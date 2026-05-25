@@ -126,10 +126,17 @@ function stripB64ForServerSync(conversation: ImageConversation): ImageConversati
 
 async function hydrateConversations(
   conversations: ImageConversation[],
+  conversationIds?: string[],
 ): Promise<ImageConversation[]> {
+  // 只处理指定的会话（未指定则处理所有）
+  const targetConvs = conversationIds
+    ? conversations.filter((c) => conversationIds.includes(c.id))
+    : conversations;
+  const targetIds = new Set(targetConvs.map((c) => c.id));
+
   // 收集所有缺少 b64_json 但有 image_id 的图片 ID
   const allMissingIds: string[] = [];
-  for (const conv of conversations) {
+  for (const conv of targetConvs) {
     for (const turn of conv.turns) {
       for (const img of turn.images) {
         if (img.image_id && !img.b64_json) {
@@ -154,22 +161,29 @@ async function hydrateConversations(
 
   if (idToB64.size === 0) return conversations;
 
-  return conversations.map((conv) => ({
-    ...conv,
-    turns: conv.turns.map((turn) => ({
-      ...turn,
-      images: turn.images.map((img) => {
-        const b64 = img.image_id ? idToB64.get(img.image_id) : undefined;
-        if (b64 && !img.b64_json) {
-          return { ...img, b64_json: b64, status: img.status === "loading" ? "success" : img.status };
-        }
-        return img;
-      }),
-    })),
-  }));
+  return conversations.map((conv) => {
+    if (!targetIds.has(conv.id)) return conv;
+    return {
+      ...conv,
+      turns: conv.turns.map((turn) => ({
+        ...turn,
+        images: turn.images.map((img) => {
+          const b64 = img.image_id ? idToB64.get(img.image_id) : undefined;
+          if (b64 && !img.b64_json) {
+            return { ...img, b64_json: b64, status: img.status === "loading" ? "success" : img.status };
+          }
+          return img;
+        }),
+      })),
+    };
+  });
 }
 
-async function recoverConversationHistory(items: ImageConversation[]) {
+async function recoverConversationHistory(
+  items: ImageConversation[],
+  opts?: { hydrateConversationIds?: string[] },
+) {
+  const hydrateIds = opts?.hydrateConversationIds;
   const activeTurnIds: string[] = (() => {
     try {
       if (typeof window === "undefined") return [];
@@ -237,8 +251,8 @@ async function recoverConversationHistory(items: ImageConversation[]) {
     } catch { /* 孤儿匹配失败不阻塞恢复 */ }
   }
 
-  // 第二步：单次批量请求从后端 images 表恢复 b64_json
-  const hydrated = await hydrateConversations(resolvedItems);
+  // 第二步：批量请求从后端 images 表恢复 b64_json（仅恢复指定会话）
+  const hydrated = await hydrateConversations(resolvedItems, hydrateIds);
 
   const normalized = hydrated.map((conversation) => {
     let changed = false;
@@ -268,13 +282,16 @@ async function recoverConversationHistory(items: ImageConversation[]) {
         const hasImageIdRef = turn.images.some((img) => img.image_id);
         if (hasImageIdRef) {
           const failedCount = turn.images.filter((img) => img.status === "error").length;
-          const successCount = turn.images.filter((img) => img.status === "success").length;
+          // 有 image_id 就算已解决（即使 b64_json 还没水合），避免没水合的会话被错误标记为失败
+          const resolvedCount = turn.images.filter(
+            (img) => img.status === "success" || img.image_id,
+          ).length;
           const orphanLoading = turn.images.filter(
             (img) => img.status === "loading" && !img.image_id,
           ).length;
           changed = true;
           const totalFailed = failedCount + orphanLoading;
-          const resolvedStatus: ImageTurnStatus = totalFailed > 0 && successCount === 0 ? "error" : "success";
+          const resolvedStatus: ImageTurnStatus = totalFailed > 0 && resolvedCount === 0 ? "error" : "success";
           return {
             ...turn,
             status: resolvedStatus,
@@ -325,6 +342,7 @@ export default function ImagePage() {
   const didLoadQuotaRef = useRef(false);
   const isSubmittingRef = useRef(false);
   const conversationsRef = useRef<ImageConversation[]>([]);
+  const hydratedIdsRef = useRef<Set<string>>(new Set());
   const resultsViewportRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -375,20 +393,27 @@ export default function ImagePage() {
     const loadHistory = async () => {
       try {
         const { items } = await fetchConversations();
-        const normalizedItems = await recoverConversationHistory(items);
+        // 提前确定目标会话，只水合选中会话以提升加载速度
+        const storedConversationId =
+          typeof window !== "undefined" ? window.localStorage.getItem(ACTIVE_CONVERSATION_STORAGE_KEY) : null;
+        const preselectedId =
+          (storedConversationId && items.some((c) => c.id === storedConversationId)
+            ? storedConversationId
+            : null) ?? pickFallbackConversationId(items);
+
+        const normalizedItems = await recoverConversationHistory(items, {
+          hydrateConversationIds: preselectedId ? [preselectedId] : [],
+        });
         if (cancelled) {
           return;
         }
 
         conversationsRef.current = normalizedItems;
         setConversations(normalizedItems);
-        const storedConversationId =
-          typeof window !== "undefined" ? window.localStorage.getItem(ACTIVE_CONVERSATION_STORAGE_KEY) : null;
-        const nextSelectedConversationId =
-          (storedConversationId && normalizedItems.some((conversation) => conversation.id === storedConversationId)
-            ? storedConversationId
-            : null) ?? pickFallbackConversationId(normalizedItems);
-        setSelectedConversationId(nextSelectedConversationId);
+        if (preselectedId) {
+          hydratedIdsRef.current.add(preselectedId);
+        }
+        setSelectedConversationId(preselectedId);
       } catch (error) {
         const message = error instanceof Error ? error.message : "读取会话记录失败";
         toast.error(message);
@@ -500,6 +525,26 @@ export default function ImagePage() {
     },
     [],
   );
+
+  // 按需水合单个会话（切换会话时懒加载）
+  const hydrateSingleConversation = useCallback(async (conversationId: string) => {
+    if (hydratedIdsRef.current.has(conversationId)) return;
+    hydratedIdsRef.current.add(conversationId); // 立即标记，防止并发重复水合
+    const current = conversationsRef.current.find((c) => c.id === conversationId);
+    if (!current) return;
+    const [hydrated] = await hydrateConversations([current]);
+    conversationsRef.current = conversationsRef.current.map((c) =>
+      c.id === conversationId ? hydrated : c,
+    );
+    setConversations([...conversationsRef.current]);
+  }, []);
+
+  // 切换会话时按需水合
+  useEffect(() => {
+    if (selectedConversationId && !hydratedIdsRef.current.has(selectedConversationId)) {
+      void hydrateSingleConversation(selectedConversationId);
+    }
+  }, [selectedConversationId, hydrateSingleConversation]);
 
   const clearComposerInputs = useCallback(() => {
     setImagePrompt("");

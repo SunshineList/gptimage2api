@@ -92,6 +92,10 @@ class Database:
                         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
                 """)
+                conn.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_conversations_user_updated
+                    ON conversations(user_key, updated_at DESC)
+                """)
                 conn.commit()
             finally:
                 conn.close()

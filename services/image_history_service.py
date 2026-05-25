@@ -110,6 +110,13 @@ class ImageHistoryService:
             after_time = q.get("after_time", "")
             if not prompt:
                 continue
+            # 减去 120 秒缓冲，防止浏览器时钟比服务器快导致漏匹配
+            try:
+                from datetime import timedelta
+                after_dt = datetime.fromisoformat(after_time) - timedelta(seconds=120)
+                after_time = after_dt.isoformat()
+            except Exception:
+                pass
             rows = db.fetch_all(
                 "SELECT data FROM images WHERE user_key = ? AND json_extract(data, '$.prompt') = ? "
                 "AND json_extract(data, '$.created_at') >= ? "
